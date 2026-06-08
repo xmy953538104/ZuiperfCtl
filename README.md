@@ -5,6 +5,7 @@ ZuiperfCtl is a first-version system app and init daemon prototype for ZUI perfo
 It keeps the official ZuiPP and game helper packages installed, then adds:
 
 - `com.zui.perfctl`: privileged Android app UI.
+- `com.lenovo.safecenter.power.RefreshRateProvider`: legacy provider bridge inside the app, used to catch old ZuiGameHelper refresh-rate calls.
 - `/system/bin/zui_perfctld`: root init daemon for XML bind mounts, refresh-rate commands, and AsoulOpt control.
 - Embedded `AsoulOpt` service copied from the known working 187 payload.
 - Runtime config under `/data/local/tmp/zui_perfctl` for the current shell-domain prototype.
@@ -43,3 +44,5 @@ Runtime logs on device:
 ## Notes
 
 This is still a prototype. The app sends commands through `Settings.System` keys (`zui_perfctl_request_id`, `zui_perfctl_cmd`, `zui_perfctl_rate`) so the shell-domain daemon does not need to read app-private data. Automatic refresh switching is disabled by default until rules are added to `/data/local/tmp/zui_perfctl/refresh/rules.prop`.
+
+The legacy refresh provider bridge maps GameHelper `UGame` updates to `Settings.System peak_refresh_rate` and returns usable `current` / `supported` cursors, without replacing the official ZuiPP or ZuiGameHelper APKs.
