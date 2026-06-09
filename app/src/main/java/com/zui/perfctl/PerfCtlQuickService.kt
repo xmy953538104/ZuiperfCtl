@@ -8,10 +8,14 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 
 class PerfCtlQuickService : Service() {
+    private val handler = Handler(Looper.getMainLooper())
+
     override fun onCreate() {
         super.onCreate()
         createChannel()
@@ -19,21 +23,37 @@ class PerfCtlQuickService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            PerfCtlContract.ACTION_SET_60 -> PerfCtlRequest.send(this, PerfCtlContract.CMD_SET_REFRESH, rate = 60)
-            PerfCtlContract.ACTION_SET_90 -> PerfCtlRequest.send(this, PerfCtlContract.CMD_SET_REFRESH, rate = 90)
-            PerfCtlContract.ACTION_SET_120 -> PerfCtlRequest.send(this, PerfCtlContract.CMD_SET_REFRESH, rate = 120)
-            PerfCtlContract.ACTION_SET_144 -> PerfCtlRequest.send(this, PerfCtlContract.CMD_SET_REFRESH, rate = 144)
-            PerfCtlContract.ACTION_RESTORE -> PerfCtlRequest.send(this, PerfCtlContract.CMD_RESTORE_REFRESH)
-            PerfCtlContract.ACTION_AUTO_ON -> PerfCtlRequest.send(this, PerfCtlContract.CMD_ENABLE_AUTO_REFRESH)
-            PerfCtlContract.ACTION_AUTO_OFF -> PerfCtlRequest.send(this, PerfCtlContract.CMD_DISABLE_AUTO_REFRESH)
-            else -> Unit
+        val requested = when (intent?.action) {
+            PerfCtlContract.ACTION_SET_60 -> sendRefresh(60)
+            PerfCtlContract.ACTION_SET_90 -> sendRefresh(90)
+            PerfCtlContract.ACTION_SET_120 -> sendRefresh(120)
+            PerfCtlContract.ACTION_SET_144 -> sendRefresh(144)
+            PerfCtlContract.ACTION_RESTORE -> sendCommand(PerfCtlContract.CMD_RESTORE_REFRESH)
+            PerfCtlContract.ACTION_AUTO_ON -> sendCommand(PerfCtlContract.CMD_ENABLE_AUTO_REFRESH)
+            PerfCtlContract.ACTION_AUTO_OFF -> sendCommand(PerfCtlContract.CMD_DISABLE_AUTO_REFRESH)
+            else -> false
         }
         startForeground(NOTIFICATION_ID, buildNotification())
+        if (requested) {
+            handler.removeCallbacksAndMessages(null)
+            handler.postDelayed({
+                startForeground(NOTIFICATION_ID, buildNotification())
+            }, NOTIFICATION_REFRESH_DELAY_MS)
+        }
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun sendRefresh(rate: Int): Boolean {
+        PerfCtlRequest.send(this, PerfCtlContract.CMD_SET_REFRESH, rate = rate)
+        return true
+    }
+
+    private fun sendCommand(command: String): Boolean {
+        PerfCtlRequest.send(this, command)
+        return true
+    }
 
     private fun buildNotification(): Notification {
         val openIntent = PendingIntent.getActivity(
@@ -104,6 +124,7 @@ class PerfCtlQuickService : Service() {
     companion object {
         private const val CHANNEL_ID = "zui_perfctl_quick"
         private const val NOTIFICATION_ID = 18701
+        private const val NOTIFICATION_REFRESH_DELAY_MS = 1300L
 
         fun start(context: Context) {
             val intent = Intent(context, PerfCtlQuickService::class.java)

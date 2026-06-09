@@ -1,4 +1,4 @@
-ZuiperfCtl v4 payload
+ZuiperfCtl v6 payload
 
 Goal:
 - Keep official ZuiPP and ZuiGameHelper installed.
@@ -26,6 +26,13 @@ Request format:
   refresh=0|1
   zuipp=0|1
   asoul=0|1
+
+App request transport:
+  zui_perfctl_request_text=id|cmd|rate|package|refresh|zuipp|asoul
+
+The complete request is written in one Settings.System update. The legacy
+multi-key Settings.System transport and request.prop remain supported for ADB
+maintenance.
 
 Supported commands:
 - apply_zuipp

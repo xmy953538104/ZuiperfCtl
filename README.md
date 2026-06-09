@@ -51,6 +51,11 @@ Runtime logs on device:
 
 ## Notes
 
-This is still a prototype. The app sends commands through `Settings.System` keys (`zui_perfctl_request_id`, `zui_perfctl_cmd`, `zui_perfctl_rate`, `zui_perfctl_package`, and profile flags) so the shell-domain daemon does not need to read app-private data. App profiles are persisted under `/data/local/tmp/zui_perfctl/profiles/apps.prop`; refresh-rate profiles are applied through `/data/local/tmp/zui_perfctl/refresh/rules.prop`.
+The app sends each command as one atomic `Settings.System` payload in
+`zui_perfctl_request_text` so rapid operations cannot mix command parameters.
+The daemon still accepts the older multi-key protocol and ADB request file for
+maintenance compatibility. App profiles are persisted under
+`/data/local/tmp/zui_perfctl/profiles/apps.prop`; refresh-rate profiles are
+applied through `/data/local/tmp/zui_perfctl/refresh/rules.prop`.
 
 XML bind mounts are requested by the daemon through `zui_perfctl.*` properties and executed by Android init. `scripts/ApplyZuiperfCtlPayload.py` adds the matching property context and the minimal init `mounton` SELinux rule, then updates the platform sepolicy hash so the device recompiles split sepolicy at boot.

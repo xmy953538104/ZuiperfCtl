@@ -1,6 +1,7 @@
 package com.zui.perfctl
 
 import android.content.Context
+import android.os.SystemClock
 import android.provider.Settings
 
 object PerfCtlRequest {
@@ -14,16 +15,20 @@ object PerfCtlRequest {
         asoul: Boolean? = null,
     ) {
         val resolver = context.contentResolver
-        Settings.System.putString(resolver, PerfCtlContract.KEY_CMD, cmd)
-        Settings.System.putString(resolver, PerfCtlContract.KEY_RATE, rate?.toString().orEmpty())
-        Settings.System.putString(resolver, PerfCtlContract.KEY_PACKAGE, pkg.orEmpty())
-        Settings.System.putString(resolver, PerfCtlContract.KEY_PROFILE_REFRESH, refresh.toFlag())
-        Settings.System.putString(resolver, PerfCtlContract.KEY_PROFILE_ZUIPP, zuipp.toFlag())
-        Settings.System.putString(resolver, PerfCtlContract.KEY_PROFILE_ASOUL, asoul.toFlag())
+        val requestId = "${System.currentTimeMillis()}_${SystemClock.elapsedRealtimeNanos()}_$cmd"
+        val requestText = listOf(
+            requestId,
+            cmd,
+            rate?.toString().orEmpty(),
+            pkg.orEmpty().replace("|", ""),
+            refresh.toFlag(),
+            zuipp.toFlag(),
+            asoul.toFlag(),
+        ).joinToString("|")
         Settings.System.putString(
             resolver,
-            PerfCtlContract.KEY_REQUEST_ID,
-            "${System.currentTimeMillis()}_$cmd",
+            PerfCtlContract.KEY_REQUEST_TEXT,
+            requestText,
         )
     }
 

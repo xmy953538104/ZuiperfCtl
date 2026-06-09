@@ -12,6 +12,7 @@ LOG_FILE=$LOG_DIR/perfctld.log
 STATUS_FILE=$PERF_DIR/status.prop
 ADB_REQUEST=$PERF_DIR/request.prop
 LAST_SETTINGS_ID_FILE=$PERF_DIR/last_settings_request_id
+LAST_SETTINGS_TEXT_FILE=$PERF_DIR/last_settings_request_text
 APP_PACKAGE=com.zui.zuiperfctl
 APP_SERVICE_COMPONENT=com.zui.zuiperfctl/com.zui.perfctl.PerfCtlQuickService
 PROP_ZUIPP=zui_perfctl.zuipp
@@ -36,6 +37,7 @@ ASOUL_ENABLED=$ASOUL_DIR/enabled.flag
 REFRESH_ENABLED=$REFRESH_DIR/enabled.flag
 
 REQ_ID_KEY=zui_perfctl_request_id
+REQ_TEXT_KEY=zui_perfctl_request_text
 REQ_CMD_KEY=zui_perfctl_cmd
 REQ_RATE_KEY=zui_perfctl_rate
 REQ_PACKAGE_KEY=zui_perfctl_package
@@ -52,6 +54,8 @@ AUTO_REFRESH_KEY=zui_perfctl_auto_refresh
 LAST_TOP_APP=
 LAST_REFRESH_RATE=
 LAST_SETTINGS_REQUEST_ID=
+LAST_SETTINGS_REQUEST_TEXT=
+EMPTY_TOP_TICKS=0
 
 ts() {
     date '+%Y-%m-%d %H:%M:%S'
@@ -356,7 +360,6 @@ restore_asoul() {
     wait_mount_state unmounted "$SYSTEM_ASOPT" ||
         log_line "asoul init restore wait timeout"
     rm -f "$ASOUL_ENABLED"
-    restart_asoul
     set_status "daemon=running" "last=restore_asoul"
 }
 
@@ -400,10 +403,16 @@ extract_pkg_from_focus() {
 }
 
 current_top_app() {
-    line="$(dumpsys window 2>/dev/null | grep 'mCurrentFocus=' | head -n 1)"
+    line="$(dumpsys activity activities 2>/dev/null |
+        grep -E 'topResumedActivity=|ResumedActivity:|mResumedActivity:' |
+        head -n 1)"
     pkg="$(extract_pkg_from_focus "$line")"
     if [ -z "$pkg" ]; then
-        line="$(dumpsys activity activities 2>/dev/null | grep 'topResumedActivity=' | head -n 1)"
+        line="$(dumpsys window 2>/dev/null | grep 'mFocusedApp=' | head -n 1)"
+        pkg="$(extract_pkg_from_focus "$line")"
+    fi
+    if [ -z "$pkg" ]; then
+        line="$(dumpsys window 2>/dev/null | grep 'mCurrentFocus=' | head -n 1)"
         pkg="$(extract_pkg_from_focus "$line")"
     fi
     echo "$pkg"
@@ -609,7 +618,17 @@ refresh_tick() {
         return 0
     fi
     top="$(current_top_app)"
-    if [ -z "$top" ] || [ "$top" = "$LAST_TOP_APP" ]; then
+    if [ -z "$top" ]; then
+        EMPTY_TOP_TICKS=$((EMPTY_TOP_TICKS + 1))
+        if [ "$EMPTY_TOP_TICKS" -ge 3 ] && [ -n "$LAST_REFRESH_RATE" ]; then
+            log_line "top app unavailable, restore refresh after $EMPTY_TOP_TICKS checks"
+            LAST_TOP_APP=
+            restore_refresh_rate
+        fi
+        return 0
+    fi
+    EMPTY_TOP_TICKS=0
+    if [ "$top" = "$LAST_TOP_APP" ]; then
         return 0
     fi
     LAST_TOP_APP="$top"
@@ -733,6 +752,41 @@ process_settings_request() {
     settings_delete_quiet "$REQ_PROFILE_ASOUL_KEY"
 }
 
+process_atomic_settings_request() {
+    request="$(settings_get_clean "$REQ_TEXT_KEY")"
+    if [ -z "$request" ] || [ "$request" = "$LAST_SETTINGS_REQUEST_TEXT" ]; then
+        return 0
+    fi
+    if [ -s "$LAST_SETTINGS_TEXT_FILE" ] &&
+        [ "$request" = "$(cat "$LAST_SETTINGS_TEXT_FILE" 2>/dev/null)" ]; then
+        LAST_SETTINGS_REQUEST_TEXT="$request"
+        return 0
+    fi
+
+    field_count="$(printf '%s\n' "$request" | awk -F'|' '{print NF}')"
+    LAST_SETTINGS_REQUEST_TEXT="$request"
+    echo "$request" > "$LAST_SETTINGS_TEXT_FILE"
+    chmod 0664 "$LAST_SETTINGS_TEXT_FILE" 2>/dev/null
+    if [ "$field_count" -ne 7 ]; then
+        log_line "invalid atomic settings request: fields=$field_count"
+        return 1
+    fi
+
+    id="$(printf '%s\n' "$request" | cut -d '|' -f 1)"
+    cmd="$(printf '%s\n' "$request" | cut -d '|' -f 2)"
+    rate="$(printf '%s\n' "$request" | cut -d '|' -f 3)"
+    pkg="$(printf '%s\n' "$request" | cut -d '|' -f 4)"
+    profile_refresh="$(printf '%s\n' "$request" | cut -d '|' -f 5)"
+    profile_zuipp="$(printf '%s\n' "$request" | cut -d '|' -f 6)"
+    profile_asoul="$(printf '%s\n' "$request" | cut -d '|' -f 7)"
+    if [ -z "$id" ] || [ -z "$cmd" ]; then
+        log_line "invalid atomic settings request: empty id or cmd"
+        return 1
+    fi
+    handle_request "settings-atomic:$id" "$cmd" "$rate" "$pkg" \
+        "$profile_refresh" "$profile_zuipp" "$profile_asoul"
+}
+
 boot_restore() {
     if [ -f "$ZUI_ENABLED" ]; then
         log_line "boot apply enabled zuipp bind"
@@ -756,16 +810,30 @@ init_settings_request_state() {
     fi
 }
 
+init_atomic_settings_request_state() {
+    request="$(settings_get_clean "$REQ_TEXT_KEY")"
+    if [ -n "$request" ] && [ ! -s "$LAST_SETTINGS_TEXT_FILE" ]; then
+        echo "$request" > "$LAST_SETTINGS_TEXT_FILE"
+        chmod 0664 "$LAST_SETTINGS_TEXT_FILE" 2>/dev/null
+        LAST_SETTINGS_REQUEST_TEXT="$request"
+        log_line "ignore stale atomic settings request at boot"
+    elif [ -s "$LAST_SETTINGS_TEXT_FILE" ]; then
+        LAST_SETTINGS_REQUEST_TEXT="$(cat "$LAST_SETTINGS_TEXT_FILE" 2>/dev/null)"
+    fi
+}
+
 main_loop() {
     init_dirs
     log_line "zui_perfctld start"
+    init_atomic_settings_request_state
     init_settings_request_state
     boot_restore
     while true; do
+        process_atomic_settings_request
         process_settings_request
         process_request_file "$ADB_REQUEST"
         refresh_tick
-        sleep 2
+        sleep 1
     done
 }
 

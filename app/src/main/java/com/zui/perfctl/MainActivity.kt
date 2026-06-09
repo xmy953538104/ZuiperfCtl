@@ -4,8 +4,11 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
@@ -429,13 +432,25 @@ class MainActivity : Activity() {
             .map { info ->
                 val pkg = info.packageName
                 val label = info.loadLabel(packageManager)?.toString()?.trim().orEmpty().ifBlank { pkg }
-                val icon = runCatching { info.loadIcon(packageManager) }.getOrNull()
+                val icon = loadScaledIcon(info)
                 val isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
                     (info.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
                 InstalledApp(label, pkg, icon, isSystem)
             }
             .distinctBy { it.packageName }
             .sortedWith { a, b -> collator.compare(a.label, b.label) }
+    }
+
+    private fun loadScaledIcon(info: ApplicationInfo): Drawable? {
+        return runCatching {
+            val source = info.loadIcon(packageManager)
+            val size = dp(36)
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            source.setBounds(0, 0, size, size)
+            source.draw(canvas)
+            BitmapDrawable(resources, bitmap)
+        }.getOrNull()
     }
 
     private fun filterApps(keyword: String) {

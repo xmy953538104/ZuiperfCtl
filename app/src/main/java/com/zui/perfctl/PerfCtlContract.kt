@@ -12,6 +12,7 @@ object PerfCtlContract {
     const val CMD_SET_APP_PROFILE = "set_app_profile"
     const val CMD_REMOVE_APP_PROFILE = "remove_app_profile"
 
+    const val KEY_REQUEST_TEXT = "zui_perfctl_request_text"
     const val KEY_REQUEST_ID = "zui_perfctl_request_id"
     const val KEY_CMD = "zui_perfctl_cmd"
     const val KEY_RATE = "zui_perfctl_rate"
