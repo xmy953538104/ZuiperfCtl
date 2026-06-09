@@ -3,6 +3,7 @@ package com.zui.perfctl
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
@@ -43,6 +44,7 @@ class MainActivity : Activity() {
     private lateinit var zuippCheck: CheckBox
     private lateinit var asoulCheck: CheckBox
     private lateinit var rateButtons: Map<Int, TextView>
+    private lateinit var filterButtons: Map<AppFilter, TextView>
 
     private val handler = Handler(Looper.getMainLooper())
     private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.CHINA)
@@ -53,6 +55,8 @@ class MainActivity : Activity() {
     private var selectedPackageName: String? = null
     private var selectedRate = 120
     private var changingDetail = false
+    private var currentFilter = AppFilter.USER
+    private var currentKeyword = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -135,6 +139,9 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
         }
         box.addView(label("应用列表", 17f, COLOR_TEXT, Typeface.BOLD))
+        box.addView(filterTabs(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)).apply {
+            setMargins(0, dp(10), 0, 0)
+        })
         box.addView(EditText(this).apply {
             hint = "搜索应用或包名"
             setSingleLine(true)
@@ -149,9 +156,33 @@ class MainActivity : Activity() {
                 }
             })
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply {
-            setMargins(0, dp(10), 0, dp(10))
+            setMargins(0, dp(8), 0, dp(10))
         })
         return box
+    }
+
+    private fun filterTabs(): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        val buttons = linkedMapOf<AppFilter, TextView>()
+        AppFilter.values().forEachIndexed { index, filter ->
+            val tab = chip(filter.title) {
+                currentFilter = filter
+                updateFilterButtons()
+                applyAppFilter()
+                if (visibleApps.none { it.packageName == selectedPackageName }) {
+                    selectApp(visibleApps.firstOrNull()?.packageName)
+                }
+            }
+            buttons[filter] = tab
+            row.addView(tab, LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+                setMargins(0, 0, if (index == AppFilter.values().lastIndex) 0 else dp(6), 0)
+            })
+        }
+        filterButtons = buttons
+        updateFilterButtons()
+        return row
     }
 
     private fun appList(): View {
@@ -296,6 +327,7 @@ class MainActivity : Activity() {
             PerfCtlRequest.send(this, PerfCtlContract.CMD_STATUS)
         }
         reloadProfiles()
+        applyAppFilter(notify = false)
         updateSelectedDetail()
         appAdapter.notifyDataSetChanged()
 
@@ -344,37 +376,65 @@ class MainActivity : Activity() {
     }
 
     private fun loadApps() {
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val collator = Collator.getInstance(Locale.CHINA)
         apps.clear()
-        apps.addAll(packageManager.queryIntentActivities(intent, 0)
-            .mapNotNull { info ->
-                val activity = info.activityInfo ?: return@mapNotNull null
-                val pkg = activity.packageName ?: return@mapNotNull null
+        @Suppress("DEPRECATION")
+        val installed = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+        apps.addAll(installed
+            .map { info ->
+                val pkg = info.packageName
                 val label = info.loadLabel(packageManager)?.toString()?.trim().orEmpty().ifBlank { pkg }
                 val icon = runCatching { info.loadIcon(packageManager) }.getOrNull()
-                InstalledApp(label, pkg, icon)
+                val isSystem = (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                    (info.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                InstalledApp(label, pkg, icon, isSystem)
             }
             .distinctBy { it.packageName }
             .sortedWith { a, b -> collator.compare(a.label, b.label) })
-        visibleApps.clear()
-        visibleApps.addAll(apps)
+        applyAppFilter(notify = false)
     }
 
     private fun filterApps(keyword: String) {
-        val lower = keyword.trim().lowercase(Locale.ROOT)
+        currentKeyword = keyword
+        applyAppFilter()
+    }
+
+    private fun applyAppFilter(notify: Boolean = true) {
+        val lower = currentKeyword.trim().lowercase(Locale.ROOT)
         visibleApps.clear()
         visibleApps.addAll(apps.filter {
-            lower.isBlank() ||
+            matchesCurrentTab(it) && (lower.isBlank() ||
                 it.label.lowercase(Locale.ROOT).contains(lower) ||
-                it.packageName.lowercase(Locale.ROOT).contains(lower)
+                it.packageName.lowercase(Locale.ROOT).contains(lower))
         })
-        appAdapter.notifyDataSetChanged()
+        if (::appAdapter.isInitialized && notify) {
+            appAdapter.notifyDataSetChanged()
+        }
+    }
+
+    private fun matchesCurrentTab(app: InstalledApp): Boolean {
+        return when (currentFilter) {
+            AppFilter.USER -> !app.isSystem
+            AppFilter.SYSTEM -> app.isSystem
+            AppFilter.CONFIGURED -> profiles[app.packageName]?.enabled == true
+            AppFilter.ALL -> true
+        }
+    }
+
+    private fun updateFilterButtons() {
+        if (!::filterButtons.isInitialized) {
+            return
+        }
+        filterButtons.forEach { (filter, view) ->
+            val selected = filter == currentFilter
+            view.setTextColor(if (selected) Color.WHITE else COLOR_TEXT)
+            view.background = rounded(if (selected) COLOR_ACCENT else COLOR_FIELD, dp(8), if (selected) COLOR_ACCENT else COLOR_STROKE)
+        }
     }
 
     private fun selectInitialApp() {
         val firstProfile = profiles.keys.firstOrNull()
-        val firstApp = apps.firstOrNull()?.packageName
+        val firstApp = visibleApps.firstOrNull()?.packageName ?: apps.firstOrNull()?.packageName
         selectApp(firstProfile ?: firstApp)
     }
 
@@ -391,7 +451,7 @@ class MainActivity : Activity() {
         val app = apps.firstOrNull { it.packageName == pkg }
         val profile = pkg?.let { profiles[it] }
         changingDetail = true
-        selectedTitle.text = app?.label ?: "选择一个应用"
+        selectedTitle.text = app?.label ?: pkg ?: "选择一个应用"
         selectedPackage.text = pkg.orEmpty()
         selectedRate = profile?.rate ?: selectedRate
         refreshCheck.isChecked = profile?.refreshEnabled ?: true
@@ -589,7 +649,11 @@ class MainActivity : Activity() {
             holder.icon.setImageDrawable(app.icon)
             holder.title.text = app.label
             holder.sub.text = app.packageName
-            holder.badge.text = profile?.let { "${it.rate}Hz / ${it.tags()}" } ?: "未启用"
+            holder.badge.text = buildString {
+                append(if (app.isSystem) "系统应用" else "用户应用")
+                append(" · ")
+                append(profile?.let { "${it.rate}Hz / ${it.tags()}" } ?: "未启用")
+            }
             row.background = rounded(if (selected) COLOR_SELECTED else Color.TRANSPARENT, dp(8), Color.TRANSPARENT)
             return row
         }
@@ -599,6 +663,7 @@ class MainActivity : Activity() {
         val label: String,
         val packageName: String,
         val icon: Drawable?,
+        val isSystem: Boolean,
     )
 
     private data class RowHolder(
@@ -608,6 +673,13 @@ class MainActivity : Activity() {
         val sub: TextView,
         val badge: TextView,
     )
+
+    private enum class AppFilter(val title: String) {
+        USER("用户"),
+        SYSTEM("系统"),
+        CONFIGURED("已配置"),
+        ALL("全部"),
+    }
 
     companion object {
         private val COLOR_BG = Color.rgb(245, 247, 251)

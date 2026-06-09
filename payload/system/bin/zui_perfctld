@@ -12,6 +12,10 @@ LOG_FILE=$LOG_DIR/perfctld.log
 STATUS_FILE=$PERF_DIR/status.prop
 ADB_REQUEST=$PERF_DIR/request.prop
 LAST_SETTINGS_ID_FILE=$PERF_DIR/last_settings_request_id
+APP_PACKAGE=com.zui.zuiperfctl
+APP_SERVICE_COMPONENT=com.zui.zuiperfctl/com.zui.perfctl.PerfCtlQuickService
+PROP_ZUIPP=zui_perfctl.zuipp
+PROP_ASOUL=zui_perfctl.asoul
 
 SYSTEM_GAME_POLICY=/system/etc/game_policy.xml
 SYSTEM_PERF_CONFIG=/system/etc/performanceconfig.xml
@@ -158,6 +162,17 @@ publish_state() {
     publish_profile_state
 }
 
+grant_app_permissions() {
+    pm grant "$APP_PACKAGE" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1
+    appops set "$APP_PACKAGE" POST_NOTIFICATION allow >/dev/null 2>&1
+    appops set "$APP_PACKAGE" WRITE_SETTINGS allow >/dev/null 2>&1
+}
+
+start_app_service() {
+    am start-foreground-service -n "$APP_SERVICE_COMPONENT" >/dev/null 2>&1 ||
+        am startservice -n "$APP_SERVICE_COMPONENT" >/dev/null 2>&1
+}
+
 init_dirs() {
     mkdir -p "$PERF_DIR" "$DONE_DIR" "$ZUI_DIR" "$ASOUL_DIR" "$REFRESH_DIR" "$PROFILE_DIR" "$LOG_DIR"
     chmod 0775 "$DATA_ROOT" "$PERF_DIR" "$DONE_DIR" "$ZUI_DIR" "$ASOUL_DIR" "$REFRESH_DIR" "$PROFILE_DIR" "$LOG_DIR" 2>/dev/null
@@ -169,6 +184,8 @@ init_dirs() {
         : > "$APP_PROFILES"
         chmod 0664 "$APP_PROFILES" 2>/dev/null
     fi
+    grant_app_permissions
+    start_app_service
     publish_state
     set_status "daemon=running" "last=init"
 }
@@ -211,6 +228,41 @@ bind_file() {
     return 1
 }
 
+trigger_init_action() {
+    prop="$1"
+    value="$2"
+    setprop "$prop" idle >> "$LOG_FILE" 2>&1
+    sleep 1
+    if setprop "$prop" "$value" >> "$LOG_FILE" 2>&1; then
+        log_line "init action requested: $prop=$value"
+        return 0
+    fi
+    log_line "init action request failed: $prop=$value"
+    return 1
+}
+
+wait_mount_state() {
+    expected="$1"
+    shift
+    tries=10
+    while [ "$tries" -gt 0 ]; do
+        ok=1
+        for target in "$@"; do
+            if [ "$expected" = "mounted" ]; then
+                is_mounted_on "$target" || ok=0
+            else
+                is_mounted_on "$target" && ok=0
+            fi
+        done
+        if [ "$ok" = "1" ]; then
+            return 0
+        fi
+        tries=$((tries - 1))
+        sleep 1
+    done
+    return 1
+}
+
 validate_zuipp_files() {
     if [ ! -s "$WORK_GAME_POLICY" ] || [ ! -s "$WORK_PERF_CONFIG" ]; then
         log_line "zuipp validate failed: missing work xml"
@@ -238,23 +290,23 @@ apply_zuipp() {
         set_status "daemon=running" "last=apply_zuipp_failed"
         return 1
     }
-    ok=1
-    bind_file "$WORK_GAME_POLICY" "$SYSTEM_GAME_POLICY" "game_policy" || ok=0
-    bind_file "$WORK_PERF_CONFIG" "$SYSTEM_PERF_CONFIG" "performanceconfig" || ok=0
-    if [ "$ok" = "1" ]; then
+    if trigger_init_action "$PROP_ZUIPP" apply &&
+        wait_mount_state mounted "$SYSTEM_GAME_POLICY" "$SYSTEM_PERF_CONFIG"; then
         touch "$ZUI_ENABLED"
         chmod 0664 "$ZUI_ENABLED" 2>/dev/null
         restart_zuipp
         set_status "daemon=running" "last=apply_zuipp_ok"
         return 0
     fi
+    log_line "zuipp init bind failed: prop=$(getprop "$PROP_ZUIPP" 2>/dev/null)"
     set_status "daemon=running" "last=apply_zuipp_failed"
     return 1
 }
 
 restore_zuipp() {
-    umount_if_needed "$SYSTEM_GAME_POLICY"
-    umount_if_needed "$SYSTEM_PERF_CONFIG"
+    trigger_init_action "$PROP_ZUIPP" restore
+    wait_mount_state unmounted "$SYSTEM_GAME_POLICY" "$SYSTEM_PERF_CONFIG" ||
+        log_line "zuipp init restore wait timeout"
     rm -f "$ZUI_ENABLED"
     restart_zuipp
     log_line "zuipp restore system xml"
@@ -275,10 +327,12 @@ apply_asoul() {
         set_status "daemon=running" "last=apply_asoul_failed"
         return 1
     fi
-    bind_file "$WORK_ASOPT" "$SYSTEM_ASOPT" "asopt" || {
+    if ! trigger_init_action "$PROP_ASOUL" apply ||
+        ! wait_mount_state mounted "$SYSTEM_ASOPT"; then
+        log_line "asoul init bind failed: prop=$(getprop "$PROP_ASOUL" 2>/dev/null)"
         set_status "daemon=running" "last=apply_asoul_failed"
         return 1
-    }
+    fi
     touch "$ASOUL_ENABLED"
     chmod 0664 "$ASOUL_ENABLED" 2>/dev/null
     restart_asoul
@@ -286,7 +340,9 @@ apply_asoul() {
 }
 
 restore_asoul() {
-    umount_if_needed "$SYSTEM_ASOPT"
+    trigger_init_action "$PROP_ASOUL" restore
+    wait_mount_state unmounted "$SYSTEM_ASOPT" ||
+        log_line "asoul init restore wait timeout"
     rm -f "$ASOUL_ENABLED"
     restart_asoul
     set_status "daemon=running" "last=restore_asoul"

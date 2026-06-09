@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 import pathlib
 import shutil
@@ -124,6 +125,63 @@ def update_metadata(root, unpack, entries, dry_run, report):
     report["metadata_files"] = changed
 
 
+def read_patch_lines(path):
+    if not path.exists():
+        return []
+    return [
+        line.rstrip("\n")
+        for line in path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        if line.strip()
+    ]
+
+
+def append_unique_lines(target, lines, dry_run):
+    if not lines:
+        return []
+    target = pathlib.Path(target)
+    current = []
+    if target.exists():
+        current = target.read_text(encoding="utf-8", errors="ignore").splitlines()
+    additions = [line for line in lines if line not in current]
+    if additions and not dry_run:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("\n".join(current + additions) + "\n", encoding="utf-8")
+    return additions
+
+
+def patch_property_contexts(unpack, payload, dry_run, report):
+    patch = payload / "patches" / "plat_property_contexts_add.txt"
+    target = unpack / "system_a" / "system" / "etc" / "selinux" / "plat_property_contexts"
+    additions = append_unique_lines(target, read_patch_lines(patch), dry_run)
+    report["property_contexts_added"] = additions
+
+
+def patch_plat_sepolicy(unpack, payload, dry_run, report):
+    patch = payload / "patches" / "plat_sepolicy_zui_perfctl_init_mount.cil"
+    target = unpack / "system_a" / "system" / "etc" / "selinux" / "plat_sepolicy.cil"
+    patch_lines = read_patch_lines(patch)
+    additions = append_unique_lines(target, patch_lines, dry_run)
+    report["plat_sepolicy_added"] = additions
+    if patch_lines and not dry_run:
+        update_plat_mapping_hash(unpack, report)
+
+
+def update_plat_mapping_hash(unpack, report):
+    sepolicy_dir = unpack / "system_a" / "system" / "etc" / "selinux"
+    plat = sepolicy_dir / "plat_sepolicy.cil"
+    mapping = sepolicy_dir / "mapping" / "34.0.cil"
+    sha_file = sepolicy_dir / "plat_sepolicy_and_mapping.sha256"
+    digest = hashlib.sha256(plat.read_bytes() + mapping.read_bytes()).hexdigest()
+    old = sha_file.read_text(encoding="utf-8", errors="ignore").strip() if sha_file.exists() else ""
+    sha_file.write_text(digest + "\n", encoding="utf-8")
+    report["plat_sepolicy_and_mapping_sha256"] = {
+        "old": old,
+        "new": digest,
+        "odm_precompiled_hash_left_unchanged": True,
+        "reason": "Force Android init to compile split sepolicy with /system/bin/secilc on boot.",
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="Apply ZuiperfCtl v1 payload into an unpacked image tree.")
     parser.add_argument("--root", help="Project root containing work/config, default: this repository root")
@@ -152,6 +210,8 @@ def main():
         report["warnings"].append("ZuiperfCtl.apk is missing. Run scripts/BuildZuiperfCtl.ps1 before packing a bootable image with the app.")
 
     entries = copy_payload(payload, unpack, args.dry_run, report)
+    patch_property_contexts(unpack, payload, args.dry_run, report)
+    patch_plat_sepolicy(unpack, payload, args.dry_run, report)
     update_metadata(root, unpack, entries, args.dry_run, report)
 
     out_dir = root / "work" / "config"

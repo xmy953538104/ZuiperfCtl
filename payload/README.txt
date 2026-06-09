@@ -1,11 +1,12 @@
-ZuiperfCtl v3 payload
+ZuiperfCtl v4 payload
 
 Goal:
 - Keep official ZuiPP and ZuiGameHelper installed.
-- Add our own privileged app: com.zui.perfctl.
+- Add our own privileged app: com.zui.zuiperfctl.
 - Add root init daemon: /system/bin/zui_perfctld.
 - Add embedded AsoulOpt service from the proven 187 payload.
-- Runtime data lives under /data/local/tmp/zui_perfctl for the current shell-domain prototype.
+- Runtime data lives under /data/local/tmp/zui_perfctl.
+- XML/asopt runtime bind mounts are requested through zui_perfctl.* properties and performed by init.
 
 Data layout after boot:
 - /data/local/tmp/zui_perfctl/zuipp/game_policy.xml

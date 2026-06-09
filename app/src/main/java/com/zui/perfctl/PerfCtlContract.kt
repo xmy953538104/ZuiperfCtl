@@ -27,14 +27,14 @@ object PerfCtlContract {
     const val KEY_PROFILES_TEXT = "zui_perfctl_profiles_text"
     const val KEY_AUTO_REFRESH = "zui_perfctl_auto_refresh"
 
-    const val ACTION_REFRESH_NOTIFICATION = "com.zui.perfctl.action.REFRESH_NOTIFICATION"
-    const val ACTION_SET_60 = "com.zui.perfctl.action.SET_60"
-    const val ACTION_SET_90 = "com.zui.perfctl.action.SET_90"
-    const val ACTION_SET_120 = "com.zui.perfctl.action.SET_120"
-    const val ACTION_SET_144 = "com.zui.perfctl.action.SET_144"
-    const val ACTION_RESTORE = "com.zui.perfctl.action.RESTORE"
-    const val ACTION_AUTO_ON = "com.zui.perfctl.action.AUTO_ON"
-    const val ACTION_AUTO_OFF = "com.zui.perfctl.action.AUTO_OFF"
+    const val ACTION_REFRESH_NOTIFICATION = "com.zui.zuiperfctl.action.REFRESH_NOTIFICATION"
+    const val ACTION_SET_60 = "com.zui.zuiperfctl.action.SET_60"
+    const val ACTION_SET_90 = "com.zui.zuiperfctl.action.SET_90"
+    const val ACTION_SET_120 = "com.zui.zuiperfctl.action.SET_120"
+    const val ACTION_SET_144 = "com.zui.zuiperfctl.action.SET_144"
+    const val ACTION_RESTORE = "com.zui.zuiperfctl.action.RESTORE"
+    const val ACTION_AUTO_ON = "com.zui.zuiperfctl.action.AUTO_ON"
+    const val ACTION_AUTO_OFF = "com.zui.zuiperfctl.action.AUTO_OFF"
 
     val rates = listOf(60, 90, 120, 144)
 }
