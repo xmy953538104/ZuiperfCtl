@@ -5,6 +5,7 @@ ZuiperfCtl is a system app and init daemon prototype for ZUI performance control
 It keeps the official ZuiPP and game helper packages installed, then adds:
 
 - `com.zui.perfctl`: privileged Android app UI.
+- `PerfCtlQuickService`: silent ongoing notification for quick refresh-rate switching.
 - `/system/bin/zui_perfctld`: root init daemon for XML bind mounts, refresh-rate commands, and AsoulOpt control.
 - Embedded `AsoulOpt` service copied from the known working 187 payload.
 - Runtime config under `/data/local/tmp/zui_perfctl` for the current shell-domain prototype.
@@ -50,4 +51,4 @@ Runtime logs on device:
 
 ## Notes
 
-This is still a prototype. The app sends commands through `Settings.System` keys (`zui_perfctl_request_id`, `zui_perfctl_cmd`, `zui_perfctl_rate`, `zui_perfctl_package`) so the shell-domain daemon does not need to read app-private data. Automatic refresh switching is disabled by default until rules are added from the app or to `/data/local/tmp/zui_perfctl/refresh/rules.prop`.
+This is still a prototype. The app sends commands through `Settings.System` keys (`zui_perfctl_request_id`, `zui_perfctl_cmd`, `zui_perfctl_rate`, `zui_perfctl_package`, and profile flags) so the shell-domain daemon does not need to read app-private data. App profiles are persisted under `/data/local/tmp/zui_perfctl/profiles/apps.prop`; refresh-rate profiles are applied through `/data/local/tmp/zui_perfctl/refresh/rules.prop`.

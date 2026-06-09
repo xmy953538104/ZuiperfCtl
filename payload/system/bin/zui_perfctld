@@ -6,6 +6,7 @@ DONE_DIR=$PERF_DIR/processed
 ZUI_DIR=$DATA_ROOT/zuipp
 ASOUL_DIR=$DATA_ROOT/asoul
 REFRESH_DIR=$DATA_ROOT/refresh
+PROFILE_DIR=$DATA_ROOT/profiles
 LOG_DIR=$DATA_ROOT/log
 LOG_FILE=$LOG_DIR/perfctld.log
 STATUS_FILE=$PERF_DIR/status.prop
@@ -25,6 +26,7 @@ WORK_GAME_POLICY=$ZUI_DIR/game_policy.xml
 WORK_PERF_CONFIG=$ZUI_DIR/performanceconfig.xml
 WORK_ASOPT=$ASOUL_DIR/asopt.conf
 REFRESH_RULES=$REFRESH_DIR/rules.prop
+APP_PROFILES=$PROFILE_DIR/apps.prop
 ZUI_ENABLED=$ZUI_DIR/enabled.flag
 ASOUL_ENABLED=$ASOUL_DIR/enabled.flag
 REFRESH_ENABLED=$REFRESH_DIR/enabled.flag
@@ -33,10 +35,14 @@ REQ_ID_KEY=zui_perfctl_request_id
 REQ_CMD_KEY=zui_perfctl_cmd
 REQ_RATE_KEY=zui_perfctl_rate
 REQ_PACKAGE_KEY=zui_perfctl_package
+REQ_PROFILE_REFRESH_KEY=zui_perfctl_profile_refresh
+REQ_PROFILE_ZUIPP_KEY=zui_perfctl_profile_zuipp
+REQ_PROFILE_ASOUL_KEY=zui_perfctl_profile_asoul
 STATUS_TIME_KEY=zui_perfctl_status_time
 STATUS_LAST_KEY=zui_perfctl_status_last
 STATUS_TEXT_KEY=zui_perfctl_status_text
 RULES_TEXT_KEY=zui_perfctl_refresh_rules_text
+PROFILES_TEXT_KEY=zui_perfctl_profiles_text
 AUTO_REFRESH_KEY=zui_perfctl_auto_refresh
 
 LAST_TOP_APP=
@@ -139,14 +145,31 @@ publish_refresh_state() {
     fi
 }
 
+publish_profile_state() {
+    profiles_text=
+    if [ -s "$APP_PROFILES" ]; then
+        profiles_text="$(grep -v '^[[:space:]]*#' "$APP_PROFILES" 2>/dev/null | grep -v '^[[:space:]]*$' 2>/dev/null)"
+    fi
+    settings_put_quiet "$PROFILES_TEXT_KEY" "$profiles_text"
+}
+
+publish_state() {
+    publish_refresh_state
+    publish_profile_state
+}
+
 init_dirs() {
-    mkdir -p "$PERF_DIR" "$DONE_DIR" "$ZUI_DIR" "$ASOUL_DIR" "$REFRESH_DIR" "$LOG_DIR"
-    chmod 0775 "$DATA_ROOT" "$PERF_DIR" "$DONE_DIR" "$ZUI_DIR" "$ASOUL_DIR" "$REFRESH_DIR" "$LOG_DIR" 2>/dev/null
+    mkdir -p "$PERF_DIR" "$DONE_DIR" "$ZUI_DIR" "$ASOUL_DIR" "$REFRESH_DIR" "$PROFILE_DIR" "$LOG_DIR"
+    chmod 0775 "$DATA_ROOT" "$PERF_DIR" "$DONE_DIR" "$ZUI_DIR" "$ASOUL_DIR" "$REFRESH_DIR" "$PROFILE_DIR" "$LOG_DIR" 2>/dev/null
     copy_work_file "$SYSTEM_GAME_POLICY" "$DEFAULT_GAME_POLICY" "$WORK_GAME_POLICY" "game_policy"
     copy_work_file "$SYSTEM_PERF_CONFIG" "$DEFAULT_PERF_CONFIG" "$WORK_PERF_CONFIG" "performanceconfig"
     copy_if_missing "$DEFAULT_ASOPT" "$WORK_ASOPT"
     copy_if_missing "$DEFAULT_REFRESH_RULES" "$REFRESH_RULES"
-    publish_refresh_state
+    if [ ! -e "$APP_PROFILES" ]; then
+        : > "$APP_PROFILES"
+        chmod 0664 "$APP_PROFILES" 2>/dev/null
+    fi
+    publish_state
     set_status "daemon=running" "last=init"
 }
 
@@ -352,6 +375,13 @@ valid_refresh_rate() {
     return 1
 }
 
+valid_flag() {
+    case "$1" in
+        0|1) return 0 ;;
+    esac
+    return 1
+}
+
 rewrite_rules_without_pkg() {
     pkg="$1"
     tmp="$REFRESH_RULES.tmp"
@@ -370,6 +400,24 @@ rewrite_rules_without_pkg() {
     chmod 0664 "$REFRESH_RULES" 2>/dev/null
 }
 
+rewrite_profiles_without_pkg() {
+    pkg="$1"
+    tmp="$APP_PROFILES.tmp"
+    mkdir -p "$PROFILE_DIR"
+    : > "$tmp"
+    if [ -s "$APP_PROFILES" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            key="${line%%|*}"
+            if [ "$key" = "$pkg" ]; then
+                continue
+            fi
+            echo "$line" >> "$tmp"
+        done < "$APP_PROFILES"
+    fi
+    mv "$tmp" "$APP_PROFILES"
+    chmod 0664 "$APP_PROFILES" 2>/dev/null
+}
+
 set_refresh_rule() {
     pkg="$1"
     rate="$2"
@@ -382,7 +430,7 @@ set_refresh_rule() {
     echo "$pkg=$rate" >> "$REFRESH_RULES"
     chmod 0664 "$REFRESH_RULES" 2>/dev/null
     LAST_TOP_APP=
-    publish_refresh_state
+    publish_state
     log_line "refresh rule saved: $pkg -> $rate"
     set_status "daemon=running" "last=set_refresh_rule" "package=$pkg" "rate=$rate"
     if [ -f "$REFRESH_ENABLED" ]; then
@@ -399,9 +447,63 @@ remove_refresh_rule() {
     fi
     rewrite_rules_without_pkg "$pkg"
     LAST_TOP_APP=
-    publish_refresh_state
+    publish_state
     log_line "refresh rule removed: $pkg"
     set_status "daemon=running" "last=remove_refresh_rule" "package=$pkg"
+    if [ -f "$REFRESH_ENABLED" ]; then
+        refresh_tick
+    fi
+}
+
+set_app_profile() {
+    pkg="$1"
+    rate="$2"
+    refresh="$3"
+    zuipp="$4"
+    asoul="$5"
+    if ! valid_package_name "$pkg" || ! valid_refresh_rate "$rate" ||
+        ! valid_flag "$refresh" || ! valid_flag "$zuipp" || ! valid_flag "$asoul"; then
+        log_line "invalid app profile: pkg=$pkg rate=$rate refresh=$refresh zuipp=$zuipp asoul=$asoul"
+        set_status "daemon=running" "last=set_app_profile_failed" "package=$pkg"
+        return 1
+    fi
+
+    rewrite_profiles_without_pkg "$pkg"
+    if [ "$refresh" = "1" ] || [ "$zuipp" = "1" ] || [ "$asoul" = "1" ]; then
+        echo "$pkg|$rate|$refresh|$zuipp|$asoul" >> "$APP_PROFILES"
+    fi
+    chmod 0664 "$APP_PROFILES" 2>/dev/null
+
+    if [ "$refresh" = "1" ]; then
+        rewrite_rules_without_pkg "$pkg"
+        echo "$pkg=$rate" >> "$REFRESH_RULES"
+        chmod 0664 "$REFRESH_RULES" 2>/dev/null
+    else
+        rewrite_rules_without_pkg "$pkg"
+    fi
+
+    LAST_TOP_APP=
+    publish_state
+    log_line "app profile saved: $pkg rate=$rate refresh=$refresh zuipp=$zuipp asoul=$asoul"
+    set_status "daemon=running" "last=set_app_profile" "package=$pkg" "rate=$rate" "refresh=$refresh" "zuipp=$zuipp" "asoul=$asoul"
+    if [ -f "$REFRESH_ENABLED" ]; then
+        refresh_tick
+    fi
+}
+
+remove_app_profile() {
+    pkg="$1"
+    if ! valid_package_name "$pkg"; then
+        log_line "invalid app profile remove: pkg=$pkg"
+        set_status "daemon=running" "last=remove_app_profile_failed" "package=$pkg"
+        return 1
+    fi
+    rewrite_profiles_without_pkg "$pkg"
+    rewrite_rules_without_pkg "$pkg"
+    LAST_TOP_APP=
+    publish_state
+    log_line "app profile removed: $pkg"
+    set_status "daemon=running" "last=remove_app_profile" "package=$pkg"
     if [ -f "$REFRESH_ENABLED" ]; then
         refresh_tick
     fi
@@ -451,7 +553,10 @@ handle_request() {
     cmd="$2"
     rate="$3"
     pkg="$4"
-    log_line "request: $source cmd=$cmd rate=$rate pkg=$pkg"
+    profile_refresh="$5"
+    profile_zuipp="$6"
+    profile_asoul="$7"
+    log_line "request: $source cmd=$cmd rate=$rate pkg=$pkg refresh=$profile_refresh zuipp=$profile_zuipp asoul=$profile_asoul"
 
     case "$cmd" in
         apply_zuipp) apply_zuipp ;;
@@ -464,22 +569,24 @@ handle_request() {
         restore_refresh) restore_refresh_rate ;;
         set_refresh_rule) set_refresh_rule "$pkg" "$rate" ;;
         remove_refresh_rule) remove_refresh_rule "$pkg" ;;
+        set_app_profile) set_app_profile "$pkg" "$rate" "$profile_refresh" "$profile_zuipp" "$profile_asoul" ;;
+        remove_app_profile) remove_app_profile "$pkg" ;;
         enable_auto_refresh)
             touch "$REFRESH_ENABLED"
             chmod 0664 "$REFRESH_ENABLED" 2>/dev/null
             LAST_TOP_APP=
-            publish_refresh_state
+            publish_state
             set_status "daemon=running" "last=enable_auto_refresh"
             refresh_tick
             ;;
         disable_auto_refresh)
             rm -f "$REFRESH_ENABLED"
             restore_refresh_rate
-            publish_refresh_state
+            publish_state
             set_status "daemon=running" "last=disable_auto_refresh"
             ;;
         status)
-            publish_refresh_state
+            publish_state
             set_status "daemon=running" "last=status"
             ;;
         *)
@@ -497,7 +604,10 @@ process_request_file() {
     cmd="$(prop_value cmd "$file")"
     rate="$(prop_value rate "$file")"
     pkg="$(prop_value package "$file")"
-    handle_request "$file" "$cmd" "$rate" "$pkg"
+    profile_refresh="$(prop_value refresh "$file")"
+    profile_zuipp="$(prop_value zuipp "$file")"
+    profile_asoul="$(prop_value asoul "$file")"
+    handle_request "$file" "$cmd" "$rate" "$pkg" "$profile_refresh" "$profile_zuipp" "$profile_asoul"
     archive_request "$file"
 }
 
@@ -514,12 +624,18 @@ process_settings_request() {
     cmd="$(settings_get_clean "$REQ_CMD_KEY")"
     rate="$(settings_get_clean "$REQ_RATE_KEY")"
     pkg="$(settings_get_clean "$REQ_PACKAGE_KEY")"
-    handle_request "settings:$id" "$cmd" "$rate" "$pkg"
+    profile_refresh="$(settings_get_clean "$REQ_PROFILE_REFRESH_KEY")"
+    profile_zuipp="$(settings_get_clean "$REQ_PROFILE_ZUIPP_KEY")"
+    profile_asoul="$(settings_get_clean "$REQ_PROFILE_ASOUL_KEY")"
+    handle_request "settings:$id" "$cmd" "$rate" "$pkg" "$profile_refresh" "$profile_zuipp" "$profile_asoul"
     echo "$id" > "$LAST_SETTINGS_ID_FILE"
     chmod 0664 "$LAST_SETTINGS_ID_FILE" 2>/dev/null
     settings_delete_quiet "$REQ_CMD_KEY"
     settings_delete_quiet "$REQ_RATE_KEY"
     settings_delete_quiet "$REQ_PACKAGE_KEY"
+    settings_delete_quiet "$REQ_PROFILE_REFRESH_KEY"
+    settings_delete_quiet "$REQ_PROFILE_ZUIPP_KEY"
+    settings_delete_quiet "$REQ_PROFILE_ASOUL_KEY"
 }
 
 boot_restore() {
