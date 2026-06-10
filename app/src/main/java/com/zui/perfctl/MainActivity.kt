@@ -863,8 +863,11 @@ class MainActivity : Activity() {
             return null
         }
         available.firstOrNull { formatFreq(it) == normalized }?.let { return it }
-        val requested = normalized.toDoubleOrNull()?.let { (it * 1_000_000).toInt() } ?: return null
-        return available.firstOrNull { it == requested }
+        val requested = normalized.toDoubleOrNull()?.let { Math.round(it * 1_000_000).toInt() } ?: return null
+        available.firstOrNull { it == requested }?.let { return it }
+        return available
+            .minByOrNull { kotlin.math.abs(it - requested) }
+            ?.takeIf { kotlin.math.abs(it - requested) <= 10_000 }
     }
 
     private fun formatFreq(khz: Int): String =
