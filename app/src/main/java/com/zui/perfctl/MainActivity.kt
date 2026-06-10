@@ -863,11 +863,25 @@ class MainActivity : Activity() {
             return null
         }
         available.firstOrNull { formatFreq(it) == normalized }?.let { return it }
-        val requested = normalized.toDoubleOrNull()?.let { Math.round(it * 1_000_000).toInt() } ?: return null
+        val requestedGhz = normalized.toDoubleOrNull() ?: return null
+        val requested = Math.round(requestedGhz * 1_000_000).toInt()
         available.firstOrNull { it == requested }?.let { return it }
+        shorthandBucket(normalized, requestedGhz)?.let { bucket ->
+            available
+                .filter { Math.floor(it / 100_000.0).toInt() == bucket }
+                .minByOrNull { kotlin.math.abs(it - requested) }
+                ?.let { return it }
+        }
         return available
             .minByOrNull { kotlin.math.abs(it - requested) }
             ?.takeIf { kotlin.math.abs(it - requested) <= 10_000 }
+    }
+
+    private fun shorthandBucket(value: String, ghz: Double): Int? {
+        if (!Regex("""\d+\.\d0*""").matches(value)) {
+            return null
+        }
+        return Math.floor(ghz * 10.0).toInt()
     }
 
     private fun formatFreq(khz: Int): String =
