@@ -37,7 +37,6 @@ class PerfCtlQuickService : Service() {
         }
         if (rate != null) {
             PerfCtlRequest.send(this, PerfCtlContract.CMD_LEARN_REFRESH, rate = rate)
-            updateNotification(rate)
             handler.removeCallbacksAndMessages(null)
             handler.postDelayed({ updateNotification() }, NOTIFICATION_REFRESH_DELAY_MS)
         } else {
@@ -85,8 +84,6 @@ class PerfCtlQuickService : Service() {
             .setContentText("${selectedRate}Hz")
             .setContentIntent(openIntent)
             .setCustomContentView(content)
-            .setCustomBigContentView(content)
-            .setStyle(Notification.DecoratedCustomViewStyle())
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
@@ -158,7 +155,7 @@ class PerfCtlQuickService : Service() {
     companion object {
         private const val CHANNEL_ID = "zui_perfctl_quick_v2"
         private const val NOTIFICATION_ID = 18701
-        private const val NOTIFICATION_REFRESH_DELAY_MS = 380L
+        private const val NOTIFICATION_REFRESH_DELAY_MS = 720L
         private const val COLOR_SELECTED_TEXT = 0xFFFFFFFF.toInt()
         private const val COLOR_NORMAL_TEXT = 0xFF1C222A.toInt()
 

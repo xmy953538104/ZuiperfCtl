@@ -51,14 +51,20 @@ LOG_EXPORT_KEY=zui_perfctl_log_export
 BASE_REFRESH_RATE=120
 LAST_TOP_APP=
 LAST_USER_APP=
+LAST_USER_APP_TIME=0
 LAST_REFRESH_RATE=
 LAST_SETTINGS_REQUEST_TEXT=
 EMPTY_TOP_TICKS=0
 HEALTH_TICKS=0
 LOOP_TICKS=0
+NO_RULE_TOP_TICKS=0
 
 ts() {
     date '+%Y-%m-%d %H:%M:%S'
+}
+
+now_seconds() {
+    date '+%s'
 }
 
 settings_get_clean() {
@@ -236,6 +242,11 @@ publish_performance_state() {
     summary=
     [ -s "$PERFORMANCE_SUMMARY" ] && summary="$(cat "$PERFORMANCE_SUMMARY" 2>/dev/null)"
     settings_put_quiet "$PERFORMANCE_SUMMARY_KEY" "$summary"
+}
+
+clear_performance_summary() {
+    rm -f "$PERFORMANCE_SUMMARY" "$PERFORMANCE_SUMMARY.tmp"
+    settings_put_quiet "$PERFORMANCE_SUMMARY_KEY" ""
 }
 
 is_mounted_on() {
@@ -503,6 +514,20 @@ is_non_target_package() {
     return 1
 }
 
+remember_user_app() {
+    pkg="$1"
+    valid_package_name "$pkg" || return 1
+    LAST_USER_APP="$pkg"
+    LAST_USER_APP_TIME="$(now_seconds)"
+}
+
+recent_last_user_app() {
+    valid_package_name "$LAST_USER_APP" || return 1
+    now="$(now_seconds)"
+    age=$((now - LAST_USER_APP_TIME))
+    [ "$age" -ge 0 ] && [ "$age" -le 15 ]
+}
+
 rule_for_app() {
     pkg="$1"
     [ -s "$REFRESH_RULES" ] || return 1
@@ -543,27 +568,49 @@ learn_refresh() {
         return 1
     }
     top="$(current_top_app)"
-    if [ -z "$top" ] || is_overlay_package "$top"; then
-        top="$LAST_USER_APP"
+    if [ -z "$top" ] || is_overlay_package "$top" || [ "$top" = "$APP_PACKAGE" ]; then
+        if recent_last_user_app; then
+            top="$LAST_USER_APP"
+        else
+            top=
+        fi
     elif is_non_target_package "$top"; then
         top=
     fi
-    set_refresh_rate "$rate" || return 1
-    if valid_package_name "$top"; then
-        LAST_USER_APP="$top"
-        LAST_TOP_APP="$top"
-        settings_put_quiet "$TOP_PACKAGE_KEY" "$top"
-        set_refresh_rule "$top" "$rate"
-        log_line "learned refresh: $top -> $rate"
-        set_status "daemon=running" "last=learn_refresh" "package=$top" "rate=$rate"
-    else
-        log_line "refresh changed without learnable foreground app: $rate"
-        set_status "daemon=running" "last=learn_refresh_global" "rate=$rate"
+    if ! valid_package_name "$top"; then
+        if [ "$rate" = "$BASE_REFRESH_RATE" ]; then
+            set_refresh_rate "$rate" || return 1
+            log_line "refresh restored without learnable foreground app"
+            set_status "daemon=running" "last=learn_refresh_global" "rate=$rate"
+            notify_quick_service
+            return 0
+        fi
+        log_line "learn refresh ignored without learnable foreground app: $rate"
+        set_status "daemon=running" "last=learn_refresh_no_target" "rate=$rate"
+        notify_quick_service
+        return 1
     fi
+    set_refresh_rate "$rate" || return 1
+    remember_user_app "$top"
+    LAST_TOP_APP="$top"
+    settings_put_quiet "$TOP_PACKAGE_KEY" "$top"
+    set_refresh_rule "$top" "$rate"
+    log_line "learned refresh: $top -> $rate"
+    set_status "daemon=running" "last=learn_refresh" "package=$top" "rate=$rate"
     notify_quick_service
 }
 
 refresh_tick() {
+    if [ ! -s "$REFRESH_RULES" ]; then
+        set_refresh_rate "$BASE_REFRESH_RATE"
+        NO_RULE_TOP_TICKS=$((NO_RULE_TOP_TICKS + 1))
+        if [ "$NO_RULE_TOP_TICKS" -lt 5 ]; then
+            return 0
+        fi
+        NO_RULE_TOP_TICKS=0
+    else
+        NO_RULE_TOP_TICKS=0
+    fi
     top="$(current_top_app)"
     if [ -z "$top" ]; then
         EMPTY_TOP_TICKS=$((EMPTY_TOP_TICKS + 1))
@@ -574,9 +621,13 @@ refresh_tick() {
     fi
     EMPTY_TOP_TICKS=0
     if is_overlay_package "$top"; then
-        [ -n "$LAST_USER_APP" ] && top="$LAST_USER_APP"
+        if recent_last_user_app; then
+            top="$LAST_USER_APP"
+        else
+            top=
+        fi
     elif ! is_non_target_package "$top"; then
-        LAST_USER_APP="$top"
+        remember_user_app "$top"
     fi
     [ -n "$top" ] || return 0
     if [ "$top" = "$LAST_TOP_APP" ]; then
@@ -611,6 +662,7 @@ set_performance_profile() {
         "$pkg" "$mode" "$cpu_max" "$cpu_min" "$gpu_max" "$gpu_min" \
         >> "$PERFORMANCE_PROFILES"
     chmod 0664 "$PERFORMANCE_PROFILES" 2>/dev/null
+    clear_performance_summary
     publish_performance_state
     log_line "performance profile saved: $pkg/$mode"
     set_status "daemon=running" "last=set_performance_profile" \
@@ -625,6 +677,7 @@ remove_performance_profile() {
         return 1
     fi
     rewrite_performance_without_key "$pkg" "$mode"
+    clear_performance_summary
     publish_performance_state
     log_line "performance profile removed: $pkg/$mode"
     set_status "daemon=running" "last=remove_performance_profile" \
@@ -824,7 +877,7 @@ init_request_state() {
 main_loop() {
     init_dirs
     init_request_state
-    log_line "zui_perfctld v7 start"
+    log_line "zui_perfctld v8 start"
     boot_restore
     set_refresh_rate "$BASE_REFRESH_RATE"
     publish_state

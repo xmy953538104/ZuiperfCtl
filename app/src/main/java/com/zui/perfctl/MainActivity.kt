@@ -43,6 +43,7 @@ class MainActivity : Activity() {
 
     private lateinit var contentHost: FrameLayout
     private lateinit var tabButtons: Map<Page, TextView>
+    private lateinit var headerStatus: TextView
     private lateinit var refreshRulesHost: LinearLayout
     private lateinit var refreshStatus: TextView
     private lateinit var performanceListHost: LinearLayout
@@ -70,7 +71,7 @@ class MainActivity : Activity() {
         setContentView(buildRoot())
         showPage(Page.REFRESH)
         handler.postDelayed({ PerfCtlQuickService.start(this) }, 250)
-        sendCommand(null) {
+        sendCommand(null, refreshNotification = true) {
             PerfCtlRequest.send(this, PerfCtlContract.CMD_STATUS)
         }
     }
@@ -84,13 +85,39 @@ class MainActivity : Activity() {
     }
 
     private fun buildRoot(): View {
+        val wide = isWideLayout()
         val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = if (wide) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             setBackgroundColor(COLOR_BG)
             setPadding(dp(18), dp(14), dp(18), dp(18))
         }
+        if (wide) {
+            val nav = vertical().apply {
+                setPadding(0, 0, dp(12), 0)
+                addView(pageTabs(verticalTabs = true), LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ))
+            }
+            root.addView(nav, LinearLayout.LayoutParams(dp(168), ViewGroup.LayoutParams.MATCH_PARENT))
+
+            val main = vertical()
+            main.addView(header(), matchWrap())
+            contentHost = FrameLayout(this)
+            main.addView(contentHost, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            ))
+            root.addView(main, LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                1f,
+            ))
+            return root
+        }
         root.addView(header(), matchWrap())
-        root.addView(pageTabs(), LinearLayout.LayoutParams(
+        root.addView(pageTabs(verticalTabs = false), LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(44),
         ).apply {
@@ -113,20 +140,21 @@ class MainActivity : Activity() {
             val titleBox = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(label("ZuiperfCtl", 23f, COLOR_TEXT, Typeface.BOLD))
-                addView(label("ZUI 性能控制", 12f, COLOR_SUBTLE, Typeface.NORMAL))
+                headerStatus = label(headerStatusText(), 12f, COLOR_SUBTLE, Typeface.NORMAL)
+                addView(headerStatus)
             }
             addView(titleBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(commandButton("刷新") {
-                sendCommand("正在刷新") {
+                sendCommand("正在刷新", refreshNotification = true) {
                     PerfCtlRequest.send(this@MainActivity, PerfCtlContract.CMD_STATUS)
                 }
             }, LinearLayout.LayoutParams(dp(92), dp(40)))
         }
     }
 
-    private fun pageTabs(): View {
+    private fun pageTabs(verticalTabs: Boolean): View {
         val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = if (verticalTabs) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
             background = rounded(COLOR_FIELD, dp(8), COLOR_STROKE)
             setPadding(dp(3), dp(3), dp(3), dp(3))
         }
@@ -137,7 +165,16 @@ class MainActivity : Activity() {
                 setOnClickListener { showPage(page) }
             }
             map[page] = tab
-            row.addView(tab, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            if (verticalTabs) {
+                row.addView(tab, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(46),
+                ).apply {
+                    setMargins(0, if (row.childCount == 0) 0 else dp(4), 0, 0)
+                })
+            } else {
+                row.addView(tab, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            }
         }
         tabButtons = map
         return row
@@ -158,6 +195,7 @@ class MainActivity : Activity() {
     }
 
     private fun renderCurrentPage() {
+        updateHeaderStatus()
         contentHost.removeAllViews()
         val view = when (currentPage) {
             Page.REFRESH -> buildRefreshPage()
@@ -168,6 +206,25 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
         ))
+    }
+
+    private fun isWideLayout(): Boolean {
+        val config = resources.configuration
+        return config.screenWidthDp >= 700 &&
+            config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    }
+
+    private fun headerStatusText(): String {
+        val peak = setting("peak_refresh_rate").cleanSetting().ifBlank { "120" }
+        val top = setting(PerfCtlContract.KEY_TOP_PACKAGE).ifBlank { "未识别前台" }
+        val last = setting(PerfCtlContract.KEY_STATUS_LAST).ifBlank { "init" }
+        return "v$APP_VERSION_NAME · ${peak}Hz · ${commandName(last)} · $top"
+    }
+
+    private fun updateHeaderStatus() {
+        if (::headerStatus.isInitialized) {
+            headerStatus.text = headerStatusText()
+        }
     }
 
     private fun buildRefreshPage(): View {
@@ -185,7 +242,7 @@ class MainActivity : Activity() {
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(commandButton("恢复全局 120Hz") {
-                sendCommand("正在恢复 120Hz") {
+                sendCommand("正在恢复 120Hz", refreshNotification = true) {
                     PerfCtlRequest.send(this@MainActivity, PerfCtlContract.CMD_RESTORE_REFRESH)
                 }
             }, LinearLayout.LayoutParams(0, dp(44), 1f))
@@ -228,7 +285,7 @@ class MainActivity : Activity() {
             row.addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             row.addView(rateBadge("${rate}Hz"), LinearLayout.LayoutParams(dp(72), dp(36)))
             row.addView(commandButton("移除") {
-                sendCommand("正在移除规则") {
+                sendCommand("正在移除规则", refreshNotification = true) {
                     PerfCtlRequest.send(
                         this@MainActivity,
                         PerfCtlContract.CMD_REMOVE_REFRESH_RULE,
@@ -243,7 +300,7 @@ class MainActivity : Activity() {
     }
 
     private fun buildPerformancePage(): View {
-        val tablet = resources.configuration.screenWidthDp >= 700
+        val tablet = isWideLayout()
         val root = LinearLayout(this).apply {
             orientation = if (tablet) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             gravity = Gravity.TOP
@@ -299,6 +356,13 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(48),
             ))
+            addView(compactNote("模式对应 game_policy.xml 的三段 LimitConfig；生成时只替换当前模式的常用温区，最后一个高温保护段保留官方策略。"),
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply {
+                    setMargins(0, dp(8), 0, 0)
+                })
 
             val cpuRow = horizontalRow().apply {
                 background = null
@@ -347,7 +411,7 @@ class MainActivity : Activity() {
                 background = null
                 setPadding(0, 0, 0, 0)
                 addView(primaryButton("生成并应用调度") {
-                    sendCommand("正在生成并应用") {
+                    sendCommand("正在生成并应用", settleDelayMs = LONG_COMMAND_DELAY_MS) {
                         PerfCtlRequest.send(
                             this@MainActivity,
                             PerfCtlContract.CMD_APPLY_PERFORMANCE,
@@ -355,7 +419,7 @@ class MainActivity : Activity() {
                     }
                 }, LinearLayout.LayoutParams(0, dp(44), 1f))
                 addView(commandButton("恢复官方调度") {
-                    sendCommand("正在恢复官方调度") {
+                    sendCommand("正在恢复官方调度", settleDelayMs = LONG_COMMAND_DELAY_MS) {
                         PerfCtlRequest.send(
                             this@MainActivity,
                             PerfCtlContract.CMD_RESTORE_ZUIPP,
@@ -449,10 +513,12 @@ class MainActivity : Activity() {
         }
         val pkg = selectedPackage
         selectedAppTitle.text = pkg?.let { labelForPackage(it) } ?: "选择或添加应用"
-        selectedPackageView.text = pkg.orEmpty()
+        selectedPackageView.text = pkg?.let { "$it · ${selectedMode().title}" } ?: "未选择应用"
         loadSelectedProfile()
-        performanceSummary.text = setting(PerfCtlContract.KEY_PERFORMANCE_SUMMARY)
-            .ifBlank { "工作 XML 尚未生成" }
+        val xmlState = setting(PerfCtlContract.KEY_XML_STATE).ifBlank { "未挂载，当前使用官方 XML" }
+        val summary = setting(PerfCtlContract.KEY_PERFORMANCE_SUMMARY)
+            .ifBlank { "工作 XML 尚未生成；保存后点“生成并应用调度”才会改写 ZuiPP 工作 XML。" }
+        performanceSummary.text = "$xmlState\n$summary"
     }
 
     private fun loadSelectedProfile() {
@@ -539,7 +605,7 @@ class MainActivity : Activity() {
             background = null
             setPadding(0, 0, 0, 0)
             addView(commandButton("刷新状态") {
-                sendCommand("正在刷新") {
+                sendCommand("正在刷新", refreshNotification = true) {
                     PerfCtlRequest.send(this@MainActivity, PerfCtlContract.CMD_STATUS)
                 }
             }, LinearLayout.LayoutParams(0, dp(44), 1f))
@@ -566,7 +632,7 @@ class MainActivity : Activity() {
     }
 
     private fun exportLogs() {
-        sendCommand("正在整理日志") {
+        sendCommand("正在整理日志", settleDelayMs = EXPORT_COMMAND_DELAY_MS) {
             PerfCtlRequest.send(this, PerfCtlContract.CMD_EXPORT_LOGS)
         }
         handler.postDelayed({
@@ -584,7 +650,7 @@ class MainActivity : Activity() {
                 },
                 REQUEST_EXPORT_LOG,
             )
-        }, 1600)
+        }, EXPORT_COMMAND_DELAY_MS + 300)
     }
 
     @Deprecated("Deprecated in Java")
@@ -706,7 +772,12 @@ class MainActivity : Activity() {
             .forEach { performanceProfiles[it.key] = it }
     }
 
-    private fun sendCommand(message: String?, block: () -> Unit) {
+    private fun sendCommand(
+        message: String?,
+        settleDelayMs: Long = SHORT_COMMAND_DELAY_MS,
+        refreshNotification: Boolean = false,
+        block: () -> Unit,
+    ) {
         val now = SystemClock.elapsedRealtime()
         if (commandInFlight || now - lastCommandAt < 180) {
             if (message != null) toast("操作处理中")
@@ -716,14 +787,19 @@ class MainActivity : Activity() {
         lastCommandAt = now
         if (message != null) toast(message)
         Thread {
-            runCatching { block() }
+            val result = runCatching { block() }
             handler.post {
-                PerfCtlQuickService.start(this)
                 handler.postDelayed({
                     commandInFlight = false
+                    if (result.isFailure && message != null) {
+                        toast("命令发送失败")
+                    }
                     reloadState()
                     renderCurrentPage()
-                }, 380)
+                    if (refreshNotification) {
+                        PerfCtlQuickService.start(this)
+                    }
+                }, settleDelayMs)
             }
         }.start()
     }
@@ -824,6 +900,11 @@ class MainActivity : Activity() {
     private fun infoPanel() = label("", 13f, COLOR_TEXT, Typeface.NORMAL).apply {
         setPadding(dp(13), dp(11), dp(13), dp(11))
         background = rounded(COLOR_FIELD, dp(8), COLOR_STROKE)
+    }
+
+    private fun compactNote(text: String) = label(text, 12f, COLOR_SUBTLE, Typeface.NORMAL).apply {
+        setPadding(dp(10), dp(8), dp(10), dp(8))
+        background = rounded(COLOR_NOTE, dp(7), COLOR_STROKE)
     }
 
     private fun emptyText(text: String) = label(text, 13f, COLOR_SUBTLE, Typeface.NORMAL).apply {
@@ -999,8 +1080,13 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_EXPORT_LOG = 901
+        private const val APP_VERSION_NAME = "0.8.0"
+        private const val SHORT_COMMAND_DELAY_MS = 720L
+        private const val LONG_COMMAND_DELAY_MS = 6500L
+        private const val EXPORT_COMMAND_DELAY_MS = 1800L
         private val COLOR_BG = Color.rgb(244, 247, 250)
         private val COLOR_FIELD = Color.rgb(238, 242, 246)
+        private val COLOR_NOTE = Color.rgb(250, 252, 244)
         private val COLOR_SELECTED = Color.rgb(226, 239, 255)
         private val COLOR_STROKE = Color.rgb(211, 220, 230)
         private val COLOR_TEXT = Color.rgb(28, 34, 42)
