@@ -70,12 +70,10 @@ LAST_GPU_STATE=
 GPU_REASSERT_TICKS=0
 LAST_SETTINGS_REQUEST_TEXT=
 LAST_SCENE_EVENT_TEXT=
-EMPTY_TOP_TICKS=0
 HEALTH_TICKS=0
 LOOP_TICKS=0
 SCENE_TTL_SECONDS=60
-FALLBACK_POLL_INTERVAL=8
-FALLBACK_POLL_TICKS=0
+LOOP_SLEEP_SECONDS=0.5
 
 ts() {
     date '+%Y-%m-%d %H:%M:%S'
@@ -557,33 +555,6 @@ restore_refresh_rate() {
     set_status "daemon=running" "last=restore_refresh" "rate=$BASE_REFRESH_RATE"
 }
 
-extract_pkg_from_focus() {
-    line="$1"
-    pkg="$(echo "$line" | sed -n 's/.* u[0-9][0-9]* \([^/ }]*\)\/.*/\1/p' | head -n 1)"
-    if [ -z "$pkg" ]; then
-        pkg="$(echo "$line" |
-            sed -n 's/.* \([A-Za-z0-9_][A-Za-z0-9_.]*\)\/[A-Za-z0-9_.$]*.*/\1/p' |
-            head -n 1)"
-    fi
-    printf '%s\n' "$pkg"
-}
-
-current_top_app() {
-    line="$(dumpsys window 2>/dev/null | grep 'mFocusedApp=' | head -n 1)"
-    pkg="$(extract_pkg_from_focus "$line")"
-    if [ -z "$pkg" ]; then
-        line="$(dumpsys activity activities 2>/dev/null |
-            grep -E 'topResumedActivity=|ResumedActivity:|mResumedActivity:' |
-            head -n 1)"
-        pkg="$(extract_pkg_from_focus "$line")"
-    fi
-    if [ -z "$pkg" ]; then
-        line="$(dumpsys window 2>/dev/null | grep 'mCurrentFocus=' | head -n 1)"
-        pkg="$(extract_pkg_from_focus "$line")"
-    fi
-    printf '%s\n' "$pkg"
-}
-
 is_overlay_package() {
     case "$1" in
         com.android.systemui) return 0 ;;
@@ -625,6 +596,23 @@ latest_scene_event_pkg() {
     printf '%s\n' "$pkg"
 }
 
+active_scene_pkg() {
+    pkg="$(latest_scene_event_pkg)" && {
+        printf '%s\n' "$pkg"
+        return 0
+    }
+    pkg="$(settings_get_clean "$TOP_PACKAGE_KEY")"
+    if is_scene_package "$pkg"; then
+        printf '%s\n' "$pkg"
+        return 0
+    fi
+    if is_scene_package "$LAST_TOP_APP"; then
+        printf '%s\n' "$LAST_TOP_APP"
+        return 0
+    fi
+    return 1
+}
+
 rule_for_app() {
     pkg="$1"
     [ -s "$REFRESH_RULES" ] || return 1
@@ -660,17 +648,15 @@ remove_refresh_rule() {
 
 learn_refresh() {
     rate="$1"
+    requested_pkg="$2"
     valid_refresh_rate "$rate" || {
         set_status "daemon=running" "last=learn_refresh_failed" "rate=$rate"
         return 1
     }
-    top="$(latest_scene_event_pkg)"
-    if is_scene_package "$top"; then
-        :
-    elif recent_last_user_app; then
-        top="$LAST_USER_APP"
+    if is_scene_package "$requested_pkg"; then
+        top="$requested_pkg"
     else
-        top="$(current_top_app)"
+        top="$(active_scene_pkg)"
     fi
     if is_scene_package "$top"; then
         :
@@ -861,27 +847,10 @@ restore_gpu_limits() {
 
 refresh_tick() {
     if process_scene_event; then
-        FALLBACK_POLL_TICKS=0
         return 0
     fi
-    FALLBACK_POLL_TICKS=$((FALLBACK_POLL_TICKS + 1))
-    if [ -n "$LAST_SCENE_EVENT_TEXT" ] &&
-        [ "$FALLBACK_POLL_TICKS" -lt "$FALLBACK_POLL_INTERVAL" ]; then
-        apply_scene_package "$LAST_TOP_APP" cached >/dev/null 2>&1
-        return 0
-    fi
-    FALLBACK_POLL_TICKS=0
-
-    top="$(current_top_app)"
-    if [ -z "$top" ]; then
-        EMPTY_TOP_TICKS=$((EMPTY_TOP_TICKS + 1))
-        return 0
-    fi
-    EMPTY_TOP_TICKS=0
-    if ! is_scene_package "$top"; then
-        return 0
-    fi
-    apply_scene_package "$top" poll
+    top="$(active_scene_pkg)" || return 0
+    apply_scene_package "$top" cached >/dev/null 2>&1
 }
 
 set_performance_profile() {
@@ -928,7 +897,7 @@ set_performance_profile() {
     generate_performance_xml
     publish_performance_state
     LAST_GPU_PROFILE=
-    apply_gpu_limits_for_pkg "$(current_top_app)"
+    apply_gpu_limits_for_pkg "$(active_scene_pkg)"
     set_status "daemon=running" "last=set_performance_profile" \
         "package=$pkg" "mode=$mode"
 }
@@ -946,7 +915,7 @@ remove_performance_profile() {
     generate_performance_xml
     publish_performance_state
     LAST_GPU_PROFILE=
-    apply_gpu_limits_for_pkg "$(current_top_app)"
+    apply_gpu_limits_for_pkg "$(active_scene_pkg)"
     set_status "daemon=running" "last=remove_performance_profile" \
         "package=$pkg" "mode=$mode"
 }
@@ -986,7 +955,7 @@ generate_performance_xml() {
 apply_performance() {
     if generate_performance_xml && apply_zuipp; then
         LAST_GPU_PROFILE=
-        apply_gpu_limits_for_pkg "$(current_top_app)"
+        apply_gpu_limits_for_pkg "$(active_scene_pkg)"
         set_status "daemon=running" "last=apply_performance_ok"
         return 0
     fi
@@ -1061,7 +1030,7 @@ handle_request() {
             publish_state
             set_status "daemon=running" "last=status"
             ;;
-        learn_refresh) learn_refresh "$rate" ;;
+        learn_refresh) learn_refresh "$rate" "$pkg" ;;
         set_refresh) set_refresh_rate "$rate" ;;
         restore_refresh) restore_refresh_rate ;;
         remove_refresh_rule) remove_refresh_rule "$pkg" ;;
@@ -1204,7 +1173,7 @@ init_request_state() {
 main_loop() {
     init_dirs
     init_request_state
-    log_line "zui_perfctld v15 start"
+    log_line "zui_perfctld v16 start"
     boot_restore
     set_refresh_rate "$BASE_REFRESH_RATE"
     publish_state
@@ -1221,7 +1190,7 @@ main_loop() {
             publish_xml_state
             HEALTH_TICKS=0
         fi
-        sleep 0.25
+        sleep "$LOOP_SLEEP_SECONDS"
     done
 }
 

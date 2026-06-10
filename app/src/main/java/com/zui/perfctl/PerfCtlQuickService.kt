@@ -12,7 +12,6 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
-import android.provider.Settings
 import android.widget.RemoteViews
 
 class PerfCtlQuickService : Service() {
@@ -42,11 +41,15 @@ class PerfCtlQuickService : Service() {
         if (rate != null) {
             pendingRate = rate
             pendingRateUntilMs = SystemClock.elapsedRealtime() + PENDING_RATE_TIMEOUT_MS
-            lockRefreshOptimistically(rate)
-            PerfCtlRequest.send(this, PerfCtlContract.CMD_LEARN_REFRESH, rate = rate)
+            RefreshSceneController.lockRefresh(this, rate)
+            PerfCtlRequest.send(
+                this,
+                PerfCtlContract.CMD_LEARN_REFRESH,
+                rate = rate,
+                pkg = RefreshSceneController.currentScenePackage(this),
+            )
             handler.removeCallbacksAndMessages(null)
             updateNotification(rate)
-            handler.postDelayed({ updateNotification() }, NOTIFICATION_REFRESH_DELAY_MS)
             handler.postDelayed({ updateNotification() }, PENDING_RATE_TIMEOUT_MS + 80L)
         } else {
             updateNotification()
@@ -92,17 +95,11 @@ class PerfCtlQuickService : Service() {
             .setShowWhen(false)
             .setLocalOnly(true)
             .setCategory(Notification.CATEGORY_SERVICE)
-            .setPriority(Notification.PRIORITY_DEFAULT)
+            .setPriority(Notification.PRIORITY_LOW)
             .setDefaults(0)
             .setSound(null)
             .setVibrate(null)
         return builder.build()
-    }
-
-    private fun lockRefreshOptimistically(rate: Int) {
-        Settings.System.putString(contentResolver, PerfCtlContract.KEY_ACTIVE_REFRESH, rate.toString())
-        Settings.System.putString(contentResolver, "peak_refresh_rate", "$rate.0")
-        Settings.System.putString(contentResolver, "min_refresh_rate", "$rate.0")
     }
 
     private fun pendingDisplayRate(): Int? {
@@ -144,21 +141,7 @@ class PerfCtlQuickService : Service() {
     }
 
     private fun currentRate(): Int {
-        Settings.System.getString(contentResolver, PerfCtlContract.KEY_ACTIVE_REFRESH)
-            ?.toIntOrNull()
-            ?.takeIf { it in PerfCtlContract.rates }
-            ?.let { return it }
-        val min = Settings.System.getString(contentResolver, "min_refresh_rate")
-            ?.removeSuffix(".0")
-            ?.toIntOrNull()
-        val peak = Settings.System.getString(contentResolver, "peak_refresh_rate")
-            ?.removeSuffix(".0")
-            ?.toIntOrNull()
-        return when {
-            min != null && min == peak && min in PerfCtlContract.rates -> min
-            peak in PerfCtlContract.rates -> peak!!
-            else -> 120
-        }
+        return RefreshSceneController.currentRate(this)
     }
 
     private fun createChannel() {
@@ -167,10 +150,10 @@ class PerfCtlQuickService : Service() {
         }
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "ZuiperfCtl 刷新率控制",
-            NotificationManager.IMPORTANCE_DEFAULT,
+            "ZuiperfCtl refresh",
+            NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "当前应用的刷新率快捷切换"
+            description = "Per-app refresh quick controls"
             setSound(null, null)
             enableVibration(false)
             setShowBadge(false)
@@ -178,13 +161,13 @@ class PerfCtlQuickService : Service() {
         notificationManager.deleteNotificationChannel("zui_perfctl_quick_v3")
         notificationManager.deleteNotificationChannel("zui_perfctl_quick_v4")
         notificationManager.deleteNotificationChannel("zui_perfctl_quick_v5")
+        notificationManager.deleteNotificationChannel("zui_perfctl_quick_v6")
         notificationManager.createNotificationChannel(channel)
     }
 
     companion object {
-        private const val CHANNEL_ID = "zui_perfctl_quick_v6"
+        private const val CHANNEL_ID = "zui_perfctl_quick_v7"
         private const val NOTIFICATION_ID = 18701
-        private const val NOTIFICATION_REFRESH_DELAY_MS = 120L
         private const val PENDING_RATE_TIMEOUT_MS = 1600L
         private const val COLOR_SELECTED_TEXT = 0xFFFFFFFF.toInt()
         private const val COLOR_NORMAL_TEXT = 0xFF1C222A.toInt()

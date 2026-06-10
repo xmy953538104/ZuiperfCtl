@@ -1,4 +1,4 @@
-ZuiperfCtl v15 payload
+ZuiperfCtl v16 payload
 
 System components:
 - /system/priv-app/ZuiperfCtl/ZuiperfCtl.apk
@@ -46,11 +46,10 @@ Behavior:
   It does not retrieve window content or perform gestures; it only receives the
   foreground package name and immediately applies that scene's refresh rule.
 - The root daemon consumes the accessibility scene channel for GPU/profile
-  enforcement and only falls back to dumpsys polling when event updates are not
-  available.
+  enforcement. It does not poll dumpsys for foreground-app detection.
 - Notification clicks optimistically lock peak/min/active refresh values from
-  the app process before the daemon records the scene rule, avoiding a visible
-  fallback to 120Hz while the daemon is still polling.
+  the app process before the daemon records the scene rule, avoiding the old
+  visible 120Hz bounce caused by shell-side foreground polling.
 - The daemon re-checks peak_refresh_rate and min_refresh_rate even when the
   foreground scene has not changed, so ZUI drift is locked back to the learned
   scene value.
