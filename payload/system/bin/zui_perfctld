@@ -53,12 +53,11 @@ LAST_TOP_APP=
 LAST_USER_APP=
 LAST_USER_APP_TIME=0
 LAST_REFRESH_RATE=
-MANUAL_REFRESH_RATE=$BASE_REFRESH_RATE
 LAST_SETTINGS_REQUEST_TEXT=
 EMPTY_TOP_TICKS=0
 HEALTH_TICKS=0
 LOOP_TICKS=0
-NO_RULE_TOP_TICKS=0
+SCENE_TTL_SECONDS=60
 
 ts() {
     date '+%Y-%m-%d %H:%M:%S'
@@ -261,6 +260,9 @@ is_mounted_on() {
 publish_xml_state() {
     if is_mounted_on "$SYSTEM_GAME_POLICY" && is_mounted_on "$SYSTEM_PERF_CONFIG"; then
         settings_put_quiet "$XML_STATE_KEY" "已挂载，工作 XML 正在生效"
+    elif grep -q 'ZuiperfCtl unified policy' "$SYSTEM_GAME_POLICY" 2>/dev/null &&
+        grep -q 'ZuiperfCtl unified levels' "$SYSTEM_PERF_CONFIG" 2>/dev/null; then
+        settings_put_quiet "$XML_STATE_KEY" "系统 XML 已是 ZuiperfCtl 自定义调度表"
     else
         settings_put_quiet "$XML_STATE_KEY" "未挂载，当前使用官方 XML"
     fi
@@ -470,7 +472,6 @@ set_refresh_rate() {
 }
 
 restore_refresh_rate() {
-    MANUAL_REFRESH_RATE="$BASE_REFRESH_RATE"
     set_refresh_rate "$BASE_REFRESH_RATE"
     set_status "daemon=running" "last=restore_refresh" "rate=$BASE_REFRESH_RATE"
 }
@@ -487,12 +488,12 @@ extract_pkg_from_focus() {
 }
 
 current_top_app() {
-    line="$(dumpsys activity activities 2>/dev/null |
-        grep -E 'topResumedActivity=|ResumedActivity:|mResumedActivity:' |
-        head -n 1)"
+    line="$(dumpsys window 2>/dev/null | grep 'mFocusedApp=' | head -n 1)"
     pkg="$(extract_pkg_from_focus "$line")"
     if [ -z "$pkg" ]; then
-        line="$(dumpsys window 2>/dev/null | grep 'mFocusedApp=' | head -n 1)"
+        line="$(dumpsys activity activities 2>/dev/null |
+            grep -E 'topResumedActivity=|ResumedActivity:|mResumedActivity:' |
+            head -n 1)"
         pkg="$(extract_pkg_from_focus "$line")"
     fi
     if [ -z "$pkg" ]; then
@@ -509,11 +510,16 @@ is_overlay_package() {
     return 1
 }
 
-is_non_target_package() {
-    case "$1" in
-        "$APP_PACKAGE"|com.zui.launcher|com.android.launcher3) return 0 ;;
-    esac
-    return 1
+is_self_package() {
+    [ "$1" = "$APP_PACKAGE" ]
+}
+
+is_scene_package() {
+    pkg="$1"
+    valid_package_name "$pkg" || return 1
+    is_overlay_package "$pkg" && return 1
+    is_self_package "$pkg" && return 1
+    return 0
 }
 
 remember_user_app() {
@@ -527,7 +533,7 @@ recent_last_user_app() {
     valid_package_name "$LAST_USER_APP" || return 1
     now="$(now_seconds)"
     age=$((now - LAST_USER_APP_TIME))
-    [ "$age" -ge 0 ] && [ "$age" -le 15 ]
+    [ "$age" -ge 0 ] && [ "$age" -le "$SCENE_TTL_SECONDS" ]
 }
 
 rule_for_app() {
@@ -569,20 +575,19 @@ learn_refresh() {
         set_status "daemon=running" "last=learn_refresh_failed" "rate=$rate"
         return 1
     }
-    MANUAL_REFRESH_RATE="$rate"
     top="$(current_top_app)"
-    if is_overlay_package "$top" && recent_last_user_app; then
+    if is_scene_package "$top"; then
+        :
+    elif recent_last_user_app; then
         top="$LAST_USER_APP"
-    elif [ -z "$top" ] || is_overlay_package "$top" || is_non_target_package "$top"; then
+    else
         top=
     fi
-    if ! valid_package_name "$top"; then
-        MANUAL_REFRESH_RATE="$rate"
-        set_refresh_rate "$rate" || return 1
-        log_line "global refresh override: $rate"
-        set_status "daemon=running" "last=learn_refresh_global" "rate=$rate"
+    if ! is_scene_package "$top"; then
+        log_line "learn refresh ignored without scene target: $rate"
+        set_status "daemon=running" "last=learn_refresh_no_target" "rate=$rate"
         notify_quick_service
-        return 0
+        return 1
     fi
     set_refresh_rate "$rate" || return 1
     remember_user_app "$top"
@@ -595,36 +600,23 @@ learn_refresh() {
 }
 
 refresh_tick() {
-    if [ ! -s "$REFRESH_RULES" ]; then
-        NO_RULE_TOP_TICKS=$((NO_RULE_TOP_TICKS + 1))
-        target_rate="${MANUAL_REFRESH_RATE:-$BASE_REFRESH_RATE}"
-        if [ "$LAST_REFRESH_RATE" != "$target_rate" ] ||
-            [ "$NO_RULE_TOP_TICKS" -ge 20 ]; then
-            set_refresh_rate "$target_rate"
-            NO_RULE_TOP_TICKS=0
-        fi
-        LAST_TOP_APP=
-        return 0
-    else
-        NO_RULE_TOP_TICKS=0
-    fi
     top="$(current_top_app)"
     if [ -z "$top" ]; then
         EMPTY_TOP_TICKS=$((EMPTY_TOP_TICKS + 1))
         return 0
     fi
     EMPTY_TOP_TICKS=0
-    if is_overlay_package "$top" || is_non_target_package "$top"; then
+    if ! is_scene_package "$top"; then
         return 0
     fi
     remember_user_app "$top"
-    if [ "$top" = "$LAST_TOP_APP" ]; then
+    rate="$(rule_for_app "$top")"
+    [ -n "$rate" ] || rate="$BASE_REFRESH_RATE"
+    if [ "$top" = "$LAST_TOP_APP" ] && [ "$rate" = "$LAST_REFRESH_RATE" ]; then
         return 0
     fi
     LAST_TOP_APP="$top"
     settings_put_quiet "$TOP_PACKAGE_KEY" "$top"
-    rate="$(rule_for_app "$top")"
-    [ -n "$rate" ] || rate="${MANUAL_REFRESH_RATE:-$BASE_REFRESH_RATE}"
     set_refresh_rate "$rate"
     log_line "foreground refresh: $top -> $rate"
     notify_quick_service
@@ -942,7 +934,7 @@ init_request_state() {
 main_loop() {
     init_dirs
     init_request_state
-    log_line "zui_perfctld v11 start"
+    log_line "zui_perfctld v12 start"
     boot_restore
     set_refresh_rate "$BASE_REFRESH_RATE"
     publish_state

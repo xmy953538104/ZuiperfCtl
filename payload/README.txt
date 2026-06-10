@@ -1,4 +1,4 @@
-ZuiperfCtl v11 payload
+ZuiperfCtl v12 payload
 
 System components:
 - /system/priv-app/ZuiperfCtl/ZuiperfCtl.apk
@@ -40,11 +40,14 @@ Maintenance commands kept for ADB diagnostics:
 
 Behavior:
 - Refresh-rate baseline is a hard 120Hz lock.
-- Foreground polling runs every 0.25s while exception rules exist, and sleeps
-  almost completely when there are no non-120Hz exception rules.
-- A notification rate click learns the current foreground package when possible;
-  if no learnable target is visible, it applies a global manual refresh lock.
-- Choosing 120Hz removes that package's exception rule.
+- Foreground polling always resolves the active scene package, then applies that
+  package's learned rule or the 120Hz baseline.
+- SystemUI and ZuiperfCtl are treated as transient overlays. Notification clicks
+  learn the most recent real foreground scene, so pulling the shade over a game
+  records the game, not SystemUI or ZuiperfCtl.
+- Choosing 120Hz removes the current scene's exception rule.
+- If no scene target can be resolved, the click is ignored instead of creating a
+  global manual override.
 - Performance profiles are converted into ZuiPP XML by XmlProfileGenerator.
 - CPU/GPU level IDs use 1-based lowIndex*100+highIndex inside each hardware type.
 - Applying performance regenerates both XML files, bind mounts them through init,

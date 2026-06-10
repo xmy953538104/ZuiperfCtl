@@ -1,11 +1,9 @@
 package com.zui.perfctl
 
-import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -72,7 +70,6 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestNotificationPermission()
         reloadState()
         setContentView(buildRoot())
         showPage(Page.REFRESH)
@@ -909,16 +906,9 @@ class MainActivity : Activity() {
 
     private fun String.cleanSetting(): String = removeSuffix(".0")
 
-    private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 187)
-        }
-    }
-
     private fun commandName(value: String): String = when (value) {
         PerfCtlContract.CMD_LEARN_REFRESH -> "记忆刷新率"
-        "learn_refresh_global" -> "全局刷新率"
+        "learn_refresh_no_target" -> "未找到前台场景"
         PerfCtlContract.CMD_REMOVE_REFRESH_RULE -> "移除刷新率规则"
         PerfCtlContract.CMD_RESTORE_REFRESH -> "恢复 120Hz"
         PerfCtlContract.CMD_SET_PERFORMANCE_PROFILE -> "保存性能配置"
@@ -1214,7 +1204,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_EXPORT_LOG = 901
-        private const val APP_VERSION_NAME = "0.11.0"
+        private const val APP_VERSION_NAME = "0.12.0"
         private const val SHORT_COMMAND_DELAY_MS = 720L
         private const val LONG_COMMAND_DELAY_MS = 6500L
         private const val EXPORT_COMMAND_DELAY_MS = 1800L
