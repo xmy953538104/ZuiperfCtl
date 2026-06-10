@@ -7,6 +7,9 @@ import shutil
 from datetime import datetime
 
 
+APP_PACKAGE = "com.zui.zuiperfctl"
+
+
 def stamp():
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -20,11 +23,19 @@ def resolve_unpack(root, unpack_arg):
     if unpack_arg:
         candidates.append(pathlib.Path(unpack_arg))
     candidates.append(root / "work" / "unpack")
+    candidates.append(root.parent / "work" / "unpack")
     for candidate in candidates:
         candidate = candidate.expanduser().resolve()
         if any((candidate / name).exists() for name in ["system_a", "vendor_a", "product_a", "odm_a"]):
             return candidate
     raise SystemExit("Cannot find unpack root. Expected work/unpack with system_a.")
+
+
+def resolve_image_root(root, unpack):
+    unpack = pathlib.Path(unpack).resolve()
+    if unpack.name == "unpack" and unpack.parent.name == "work":
+        return unpack.parent.parent
+    return root
 
 
 def ensure_line(path, key, line, changed, dry_run):
@@ -125,6 +136,119 @@ def update_metadata(root, unpack, entries, dry_run, report):
     report["metadata_files"] = changed
 
 
+def read_text_lossy(path):
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+
+def write_text_if_changed(path, original, updated, dry_run, changed):
+    if updated == original:
+        return
+    changed.append(str(path))
+    if not dry_run:
+        path.write_text(updated, encoding="utf-8")
+
+
+def ensure_lines_before_marker(text, marker, lines):
+    additions = [line for line in lines if line not in text]
+    if not additions:
+        return text, True
+    block = "\n".join(additions) + "\n"
+    index = text.find(marker)
+    if index < 0:
+        return text.rstrip() + "\n" + block, False
+    return text[:index] + block + text[index:], True
+
+
+def ensure_line_in_section(text, section_name, line):
+    open_tag = f"<{section_name}>"
+    close_tag = f"</{section_name}>"
+    section_start = text.find(open_tag)
+    section_end = text.find(close_tag, section_start)
+    if section_start < 0 or section_end < 0:
+        return text, False
+    section = text[section_start:section_end]
+    if line in section:
+        return text, True
+    marker = "</WhiteListApp>"
+    marker_index = text.find(marker, section_start, section_end)
+    if marker_index < 0:
+        return text, False
+    return text[:marker_index] + line + "\n" + text[marker_index:], True
+
+
+def patch_text_file(path, dry_run, changed, warnings, transform):
+    path = pathlib.Path(path)
+    if not path.exists():
+        warnings.append(f"missing keepalive config: {path}")
+        return
+    original = read_text_lossy(path)
+    updated, ok = transform(original)
+    if not ok:
+        warnings.append(f"keepalive config marker not found: {path}")
+    write_text_if_changed(path, original, updated, dry_run, changed)
+
+
+def patch_keepalive_configs(unpack, dry_run, report):
+    base = unpack / "system_a" / "system" / "etc"
+    changed = []
+    warnings = []
+
+    def patch_mem_cleaner(text):
+        ok_all = True
+        text, ok = ensure_lines_before_marker(
+            text,
+            "    </PermanentWhiteList>",
+            [f"        <PermanentPackageName>{APP_PACKAGE}</PermanentPackageName>"],
+        )
+        ok_all = ok_all and ok
+        text, ok = ensure_lines_before_marker(
+            text,
+            "</ZuiMemCleanerConfig>",
+            [f"    <Whitelist package=\"{APP_PACKAGE}\" />"],
+        )
+        return text, ok_all and ok
+
+    def patch_power_policy(text):
+        return ensure_lines_before_marker(
+            text,
+            "        </WhitelistApp>",
+            [f"            <Item>{APP_PACKAGE}</Item>"],
+        )
+
+    def patch_bgintents(text):
+        return ensure_lines_before_marker(
+            text,
+            "</config>",
+            [
+                f"        <default_allow_auto_run package=\"{APP_PACKAGE}\" allowtype=\"hide\" />",
+                f"        <hide-fg-notify package=\"{APP_PACKAGE}\" />",
+                f"        <hide-alertwindow-notify package=\"{APP_PACKAGE}\" />",
+                f"        <allow-bg-intents package=\"{APP_PACKAGE}\" />",
+            ],
+        )
+
+    def patch_zuipp_power(text):
+        ok_all = True
+        text, ok = ensure_line_in_section(text, "OverHeat", f"            <Item>{APP_PACKAGE}</Item>")
+        ok_all = ok_all and ok
+        text, ok = ensure_line_in_section(text, "DeviceIdle", f"            <Item>{APP_PACKAGE}</Item>")
+        return text, ok_all and ok
+
+    patch_text_file(base / "ZuiMemCleanerConfig.xml", dry_run, changed, warnings, patch_mem_cleaner)
+    patch_text_file(base / "ZuiPowerPolicyConfig.xml", dry_run, changed, warnings, patch_power_policy)
+    patch_text_file(
+        base / "motorola" / "bgintents" / "com.zui.safecenter.autorun.xml",
+        dry_run,
+        changed,
+        warnings,
+        patch_bgintents,
+    )
+    patch_text_file(base / "zuipp_powercfg.xml", dry_run, changed, warnings, patch_zuipp_power)
+
+    report["keepalive_configs_changed"] = changed
+    report["keepalive_config_warnings"] = warnings
+
+
 def read_patch_lines(path):
     if not path.exists():
         return []
@@ -190,7 +314,7 @@ def update_plat_mapping_hash(unpack, report):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Apply ZuiperfCtl v1 payload into an unpacked image tree.")
+    parser = argparse.ArgumentParser(description="Apply ZuiperfCtl payload into an unpacked image tree.")
     parser.add_argument("--root", help="Project root containing work/config, default: this repository root")
     parser.add_argument("--unpack", help="Unpacked image root, default: work/unpack")
     parser.add_argument("--payload", help="Payload root, default: payload")
@@ -199,6 +323,7 @@ def main():
 
     root = pathlib.Path(args.root).resolve() if args.root else resolve_root()
     unpack = resolve_unpack(root, args.unpack)
+    image_root = resolve_image_root(root, unpack)
     payload = pathlib.Path(args.payload).resolve() if args.payload else root / "payload"
     if not payload.exists():
         raise SystemExit(f"Missing payload: {payload}")
@@ -206,6 +331,7 @@ def main():
     report = {
         "started_at": datetime.now().isoformat(timespec="seconds"),
         "root": str(root),
+        "image_root": str(image_root),
         "unpack": str(unpack),
         "payload": str(payload),
         "dry_run": args.dry_run,
@@ -220,9 +346,10 @@ def main():
     patch_property_contexts(unpack, payload, args.dry_run, report)
     patch_plat_sepolicy(unpack, payload, args.dry_run, report)
     patch_vendor_sepolicy(unpack, payload, args.dry_run, report)
-    update_metadata(root, unpack, entries, args.dry_run, report)
+    patch_keepalive_configs(unpack, args.dry_run, report)
+    update_metadata(image_root, unpack, entries, args.dry_run, report)
 
-    out_dir = root / "work" / "config"
+    out_dir = image_root / "work" / "config"
     out_name = f"zui_perfctl_payload_{stamp()}.json"
     if not args.dry_run:
         out_dir.mkdir(parents=True, exist_ok=True)

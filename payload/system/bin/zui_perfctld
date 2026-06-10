@@ -71,6 +71,7 @@ GPU_REASSERT_TICKS=0
 LAST_SETTINGS_REQUEST_TEXT=
 LAST_SCENE_EVENT_TEXT=
 HEALTH_TICKS=0
+APP_HEALTH_TICKS=0
 LOOP_TICKS=0
 SCENE_TTL_SECONDS=60
 LOOP_SLEEP_SECONDS=0.5
@@ -81,6 +82,10 @@ ts() {
 
 now_seconds() {
     date '+%s'
+}
+
+uptime_seconds() {
+    awk '{printf "%d\n", $1}' /proc/uptime 2>/dev/null
 }
 
 settings_get_clean() {
@@ -574,6 +579,15 @@ is_scene_package() {
     return 0
 }
 
+is_default_scene_package() {
+    case "$1" in
+        com.zui.launcher|com.android.launcher3|com.lenovo.launcher|com.motorola.launcher)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 remember_user_app() {
     pkg="$1"
     valid_package_name "$pkg" || return 1
@@ -591,8 +605,16 @@ recent_last_user_app() {
 latest_scene_event_pkg() {
     event="$(settings_get_clean "$SCENE_EVENT_KEY")"
     [ -n "$event" ] || return 1
+    event_time="${event%%|*}"
     pkg="${event#*|}"
+    [ "$pkg" != "$event" ] || return 1
+    valid_positive_int "$event_time" || return 1
     is_scene_package "$pkg" || return 1
+    event_sec=$((event_time / 1000000000))
+    now_boot="$(uptime_seconds)"
+    valid_positive_int "$now_boot" || return 1
+    age=$((now_boot - event_sec))
+    [ "$age" -ge 0 ] && [ "$age" -le "$SCENE_TTL_SECONDS" ] || return 1
     printf '%s\n' "$pkg"
 }
 
@@ -653,13 +675,11 @@ learn_refresh() {
         set_status "daemon=running" "last=learn_refresh_failed" "rate=$rate"
         return 1
     }
-    if is_scene_package "$requested_pkg"; then
-        top="$requested_pkg"
-    else
-        top="$(active_scene_pkg)"
-    fi
+    top="$(active_scene_pkg)"
     if is_scene_package "$top"; then
         :
+    elif is_scene_package "$requested_pkg"; then
+        top="$requested_pkg"
     elif recent_last_user_app; then
         top="$LAST_USER_APP"
     else
@@ -668,6 +688,12 @@ learn_refresh() {
     if ! is_scene_package "$top"; then
         log_line "learn refresh ignored without scene target: $rate"
         set_status "daemon=running" "last=learn_refresh_no_target" "rate=$rate"
+        notify_quick_service
+        return 1
+    fi
+    if is_default_scene_package "$top" && [ "$rate" != "$BASE_REFRESH_RATE" ]; then
+        log_line "learn refresh ignored for default scene: $top -> $rate"
+        set_status "daemon=running" "last=learn_refresh_default_scene" "package=$top" "rate=$rate"
         notify_quick_service
         return 1
     fi
@@ -713,7 +739,7 @@ process_scene_event() {
         return 1
     fi
     LAST_SCENE_EVENT_TEXT="$event"
-    pkg="${event#*|}"
+    pkg="$(latest_scene_event_pkg)" || return 1
     apply_scene_package "$pkg" accessibility
 }
 
@@ -1173,7 +1199,7 @@ init_request_state() {
 main_loop() {
     init_dirs
     init_request_state
-    log_line "zui_perfctld v16 start"
+    log_line "zui_perfctld v17 start"
     boot_restore
     set_refresh_rate "$BASE_REFRESH_RATE"
     publish_state
@@ -1184,6 +1210,12 @@ main_loop() {
         process_atomic_settings_request
         process_request_file "$ADB_REQUEST"
         refresh_tick
+        APP_HEALTH_TICKS=$((APP_HEALTH_TICKS + 1))
+        if [ "$APP_HEALTH_TICKS" -ge 20 ]; then
+            grant_app_permissions
+            notify_quick_service
+            APP_HEALTH_TICKS=0
+        fi
         HEALTH_TICKS=$((HEALTH_TICKS + 1))
         if [ "$HEALTH_TICKS" -ge 40 ]; then
             publish_asoul_health

@@ -10,8 +10,10 @@
 
     <application
         android:allowBackup="false"
+        android:allowClearUserData="false"
         android:directBootAware="true"
         android:label="ZuiperfCtl"
+        android:persistent="true"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <service
@@ -49,6 +51,7 @@
 
         <activity
             android:name="com.zui.perfctl.MainActivity"
+            android:excludeFromRecents="true"
             android:exported="true"
             android:resizeableActivity="true">
             <intent-filter>

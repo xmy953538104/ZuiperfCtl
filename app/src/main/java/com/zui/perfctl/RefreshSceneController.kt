@@ -6,6 +6,13 @@ import android.provider.Settings
 
 object RefreshSceneController {
     const val BASE_REFRESH_RATE = 120
+    private const val SCENE_EVENT_TTL_NANOS = 60_000_000_000L
+    private val defaultScenePackages = setOf(
+        "com.zui.launcher",
+        "com.android.launcher3",
+        "com.lenovo.launcher",
+        "com.motorola.launcher",
+    )
 
     fun isScenePackage(context: Context, pkg: String): Boolean {
         return PackageNames.isValid(pkg) &&
@@ -14,11 +21,18 @@ object RefreshSceneController {
     }
 
     fun currentScenePackage(context: Context): String {
+        recentScenePackage(context)?.let { return it }
         val pkg = Settings.System.getString(
             context.contentResolver,
             PerfCtlContract.KEY_TOP_PACKAGE,
         ).orEmpty()
         return pkg.takeIf { isScenePackage(context, it) }.orEmpty()
+    }
+
+    fun currentLearnPackage(context: Context): String {
+        return currentScenePackage(context)
+            .takeIf { isQuickLearnPackage(context, it) }
+            .orEmpty()
     }
 
     fun rateForPackage(context: Context, pkg: String): Int {
@@ -84,5 +98,26 @@ object RefreshSceneController {
 
     private fun refreshValueMatches(value: String?, rate: Int): Boolean {
         return value == rate.toString() || value?.startsWith("$rate.") == true
+    }
+
+    private fun recentScenePackage(context: Context): String? {
+        val event = Settings.System.getString(
+            context.contentResolver,
+            PerfCtlContract.KEY_SCENE_EVENT_TEXT,
+        ).orEmpty()
+        val separator = event.indexOf('|')
+        if (separator <= 0 || separator >= event.lastIndex) {
+            return null
+        }
+        val timestamp = event.substring(0, separator).toLongOrNull() ?: return null
+        val age = SystemClock.elapsedRealtimeNanos() - timestamp
+        if (age !in 0..SCENE_EVENT_TTL_NANOS) {
+            return null
+        }
+        return event.substring(separator + 1).takeIf { isScenePackage(context, it) }
+    }
+
+    private fun isQuickLearnPackage(context: Context, pkg: String): Boolean {
+        return isScenePackage(context, pkg) && pkg !in defaultScenePackages
     }
 }

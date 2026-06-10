@@ -41,12 +41,15 @@ class PerfCtlQuickService : Service() {
         if (rate != null) {
             pendingRate = rate
             pendingRateUntilMs = SystemClock.elapsedRealtime() + PENDING_RATE_TIMEOUT_MS
-            RefreshSceneController.lockRefresh(this, rate)
+            val learnPackage = RefreshSceneController.currentLearnPackage(this)
+            if (learnPackage.isNotEmpty()) {
+                RefreshSceneController.lockRefresh(this, rate)
+            }
             PerfCtlRequest.send(
                 this,
                 PerfCtlContract.CMD_LEARN_REFRESH,
                 rate = rate,
-                pkg = RefreshSceneController.currentScenePackage(this),
+                pkg = learnPackage,
             )
             handler.removeCallbacksAndMessages(null)
             updateNotification(rate)
