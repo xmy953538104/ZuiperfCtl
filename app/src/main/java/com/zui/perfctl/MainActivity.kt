@@ -50,8 +50,14 @@ class MainActivity : Activity() {
     private lateinit var selectedAppTitle: TextView
     private lateinit var selectedPackageView: TextView
     private lateinit var modeSpinner: Spinner
-    private lateinit var cpuMaxInput: EditText
-    private lateinit var cpuMinInput: EditText
+    private lateinit var littleMaxInput: EditText
+    private lateinit var littleMinInput: EditText
+    private lateinit var bigMaxInput: EditText
+    private lateinit var bigMinInput: EditText
+    private lateinit var titanMaxInput: EditText
+    private lateinit var titanMinInput: EditText
+    private lateinit var megaMaxInput: EditText
+    private lateinit var megaMinInput: EditText
     private lateinit var gpuMaxInput: EditText
     private lateinit var gpuMinInput: EditText
     private lateinit var performanceSummary: TextView
@@ -364,33 +370,25 @@ class MainActivity : Activity() {
                     setMargins(0, dp(8), 0, 0)
                 })
 
-            val cpuRow = horizontalRow().apply {
-                background = null
-                setPadding(0, 0, 0, 0)
-            }
-            cpuMaxInput = numericField("上限 GHz", "2.5")
-            cpuMinInput = numericField("下限 GHz", "1.5")
-            cpuRow.addView(fieldBox("CPU 上限", cpuMaxInput), LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            cpuRow.addView(fieldBox("CPU 下限", cpuMinInput), LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(dp(10), 0, 0, 0)
-            })
-            addView(cpuRow, fieldMargins())
+            littleMaxInput = numericField("上限 GHz", formatFreq(LITTLE_FREQS.last()))
+            littleMinInput = numericField("下限 GHz", formatFreq(LITTLE_FREQS.first()))
+            addView(freqRow("Little cpu0-cpu2", littleMaxInput, littleMinInput, LITTLE_FREQS), fieldMargins())
 
-            val gpuRow = horizontalRow().apply {
-                background = null
-                setPadding(0, 0, 0, 0)
-            }
-            gpuMaxInput = numericField("上限 MHz", "720")
-            gpuMinInput = numericField("下限 MHz", "422")
-            gpuRow.addView(fieldBox("GPU 上限", gpuMaxInput), LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            gpuRow.addView(fieldBox("GPU 下限", gpuMinInput), LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(dp(10), 0, 0, 0)
-            })
-            addView(gpuRow, fieldMargins())
+            bigMaxInput = numericField("上限 GHz", formatFreq(BIG_FREQS.last()))
+            bigMinInput = numericField("下限 GHz", formatFreq(BIG_FREQS.first()))
+            addView(freqRow("Big cpu3-cpu4", bigMaxInput, bigMinInput, BIG_FREQS), fieldMargins())
+
+            titanMaxInput = numericField("上限 GHz", formatFreq(TITAN_FREQS.last()))
+            titanMinInput = numericField("下限 GHz", formatFreq(TITAN_FREQS.first()))
+            addView(freqRow("Titan cpu5-cpu6", titanMaxInput, titanMinInput, TITAN_FREQS), fieldMargins())
+
+            megaMaxInput = numericField("上限 GHz", formatFreq(MEGA_FREQS.last()))
+            megaMinInput = numericField("下限 GHz", formatFreq(MEGA_FREQS.first()))
+            addView(freqRow("Mega cpu7", megaMaxInput, megaMinInput, MEGA_FREQS), fieldMargins())
+
+            gpuMaxInput = numericField("上限 GHz", formatFreq(GPU_FREQS.first()))
+            gpuMinInput = numericField("下限 GHz", formatFreq(GPU_FREQS.last()))
+            addView(freqRow("GPU", gpuMaxInput, gpuMinInput, GPU_FREQS), fieldMargins())
 
             performanceSummary = infoPanel()
             addView(performanceSummary, fieldMargins())
@@ -485,8 +483,16 @@ class MainActivity : Activity() {
                     Typeface.BOLD,
                 ))
                 addView(label(
-                    "CPU ${formatGHz(profile.cpuMinKHz)}-${formatGHz(profile.cpuMaxKHz)}GHz  " +
-                        "GPU ${profile.gpuMinKHz / 1000}-${profile.gpuMaxKHz / 1000}MHz",
+                    "L ${formatFreq(profile.littleMinKHz)}-${formatFreq(profile.littleMaxKHz)}  " +
+                        "B ${formatFreq(profile.bigMinKHz)}-${formatFreq(profile.bigMaxKHz)}  " +
+                        "T ${formatFreq(profile.titanMinKHz)}-${formatFreq(profile.titanMaxKHz)}",
+                    11f,
+                    COLOR_SUBTLE,
+                    Typeface.NORMAL,
+                ))
+                addView(label(
+                    "M ${formatFreq(profile.megaMinKHz)}-${formatFreq(profile.megaMaxKHz)}  " +
+                        "GPU ${formatFreq(profile.gpuMinKHz)}-${formatFreq(profile.gpuMaxKHz)}GHz",
                     11f,
                     COLOR_SUBTLE,
                     Typeface.NORMAL,
@@ -522,41 +528,77 @@ class MainActivity : Activity() {
     }
 
     private fun loadSelectedProfile() {
-        if (!::cpuMaxInput.isInitialized) {
+        if (!::littleMaxInput.isInitialized) {
             return
         }
         val pkg = selectedPackage ?: return
         val profile = performanceProfiles["$pkg|${selectedMode().id}"]
         if (profile == null) {
-            cpuMaxInput.setText("2.5")
-            cpuMinInput.setText("1.5")
-            gpuMaxInput.setText("720")
-            gpuMinInput.setText("422")
+            littleMaxInput.setText(formatFreq(LITTLE_FREQS.last()))
+            littleMinInput.setText(formatFreq(LITTLE_FREQS.first()))
+            bigMaxInput.setText(formatFreq(BIG_FREQS.last()))
+            bigMinInput.setText(formatFreq(BIG_FREQS.first()))
+            titanMaxInput.setText(formatFreq(TITAN_FREQS.last()))
+            titanMinInput.setText(formatFreq(TITAN_FREQS.first()))
+            megaMaxInput.setText(formatFreq(MEGA_FREQS.last()))
+            megaMinInput.setText(formatFreq(MEGA_FREQS.first()))
+            gpuMaxInput.setText(formatFreq(GPU_FREQS.first()))
+            gpuMinInput.setText(formatFreq(GPU_FREQS.last()))
         } else {
-            cpuMaxInput.setText(formatGHz(profile.cpuMaxKHz))
-            cpuMinInput.setText(formatGHz(profile.cpuMinKHz))
-            gpuMaxInput.setText((profile.gpuMaxKHz / 1000).toString())
-            gpuMinInput.setText((profile.gpuMinKHz / 1000).toString())
+            littleMaxInput.setText(formatFreq(profile.littleMaxKHz))
+            littleMinInput.setText(formatFreq(profile.littleMinKHz))
+            bigMaxInput.setText(formatFreq(profile.bigMaxKHz))
+            bigMinInput.setText(formatFreq(profile.bigMinKHz))
+            titanMaxInput.setText(formatFreq(profile.titanMaxKHz))
+            titanMinInput.setText(formatFreq(profile.titanMinKHz))
+            megaMaxInput.setText(formatFreq(profile.megaMaxKHz))
+            megaMinInput.setText(formatFreq(profile.megaMinKHz))
+            gpuMaxInput.setText(formatFreq(profile.gpuMaxKHz))
+            gpuMinInput.setText(formatFreq(profile.gpuMinKHz))
         }
         renderPerformanceProfiles()
     }
 
     private fun savePerformanceProfile() {
         val pkg = selectedPackage ?: return toast("请先添加应用")
-        val cpuMax = parseGHz(cpuMaxInput.text.toString()) ?: return toast("CPU 上限格式错误")
-        val cpuMin = parseGHz(cpuMinInput.text.toString()) ?: return toast("CPU 下限格式错误")
-        val gpuMax = parseMHz(gpuMaxInput.text.toString()) ?: return toast("GPU 上限格式错误")
-        val gpuMin = parseMHz(gpuMinInput.text.toString()) ?: return toast("GPU 下限格式错误")
-        if (cpuMax < cpuMin || gpuMax < gpuMin) {
+        val littleMax = parseFreq(littleMaxInput.text.toString(), LITTLE_FREQS)
+            ?: return toast("Little 上限不在可用档位")
+        val littleMin = parseFreq(littleMinInput.text.toString(), LITTLE_FREQS)
+            ?: return toast("Little 下限不在可用档位")
+        val bigMax = parseFreq(bigMaxInput.text.toString(), BIG_FREQS)
+            ?: return toast("Big 上限不在可用档位")
+        val bigMin = parseFreq(bigMinInput.text.toString(), BIG_FREQS)
+            ?: return toast("Big 下限不在可用档位")
+        val titanMax = parseFreq(titanMaxInput.text.toString(), TITAN_FREQS)
+            ?: return toast("Titan 上限不在可用档位")
+        val titanMin = parseFreq(titanMinInput.text.toString(), TITAN_FREQS)
+            ?: return toast("Titan 下限不在可用档位")
+        val megaMax = parseFreq(megaMaxInput.text.toString(), MEGA_FREQS)
+            ?: return toast("Mega 上限不在可用档位")
+        val megaMin = parseFreq(megaMinInput.text.toString(), MEGA_FREQS)
+            ?: return toast("Mega 下限不在可用档位")
+        val gpuMax = parseFreq(gpuMaxInput.text.toString(), GPU_FREQS)
+            ?: return toast("GPU 上限不在可用档位")
+        val gpuMin = parseFreq(gpuMinInput.text.toString(), GPU_FREQS)
+            ?: return toast("GPU 下限不在可用档位")
+        if (littleMax < littleMin || bigMax < bigMin || titanMax < titanMin ||
+            megaMax < megaMin || gpuMax < gpuMin) {
             return toast("上限不能低于下限")
         }
-        if (cpuMin !in 300_000..3_400_000 || cpuMax !in 300_000..3_400_000) {
-            return toast("CPU 范围应为 0.3-3.4GHz")
-        }
-        if (gpuMin !in 231_000..903_000 || gpuMax !in 231_000..903_000) {
-            return toast("GPU 范围应为 231-903MHz")
-        }
-        val profile = PerformanceProfile(pkg, selectedMode(), cpuMax, cpuMin, gpuMax, gpuMin)
+        val profile = PerformanceProfile(
+            pkg,
+            selectedMode(),
+            littleMax,
+            littleMin,
+            bigMax,
+            bigMin,
+            titanMax,
+            titanMin,
+            megaMax,
+            megaMin,
+            gpuMax,
+            gpuMin,
+        )
         performanceProfiles[profile.key] = profile
         renderPerformanceProfiles()
         sendCommand("正在保存性能配置") {
@@ -565,8 +607,14 @@ class MainActivity : Activity() {
                 PerfCtlContract.CMD_SET_PERFORMANCE_PROFILE,
                 pkg = pkg,
                 mode = profile.mode.id,
-                cpuMax = cpuMax,
-                cpuMin = cpuMin,
+                littleMax = littleMax,
+                littleMin = littleMin,
+                bigMax = bigMax,
+                bigMin = bigMin,
+                titanMax = titanMax,
+                titanMin = titanMin,
+                megaMax = megaMax,
+                megaMin = megaMin,
                 gpuMax = gpuMax,
                 gpuMin = gpuMin,
             )
@@ -809,14 +857,31 @@ class MainActivity : Activity() {
         return PerformanceMode.entries.getOrElse(position) { PerformanceMode.BALANCED }
     }
 
-    private fun parseGHz(value: String): Int? =
-        value.trim().toDoubleOrNull()?.let { (it * 1_000_000).toInt() }
+    private fun parseFreq(value: String, available: IntArray): Int? {
+        val normalized = value.trim()
+        if (normalized.isBlank()) {
+            return null
+        }
+        available.firstOrNull { formatFreq(it) == normalized }?.let { return it }
+        val requested = normalized.toDoubleOrNull()?.let { (it * 1_000_000).toInt() } ?: return null
+        return available.firstOrNull { it == requested }
+    }
 
-    private fun parseMHz(value: String): Int? =
-        value.trim().toDoubleOrNull()?.let { (it * 1000).toInt() }
+    private fun formatFreq(khz: Int): String =
+        String.format(Locale.US, "%.2f", khz / 1_000_000.0).trimEnd('0').trimEnd('.')
 
-    private fun formatGHz(khz: Int): String =
-        String.format(Locale.US, "%.3f", khz / 1_000_000.0).trimEnd('0').trimEnd('.')
+    private fun frequencyHelp(title: String, available: IntArray): String =
+        available.mapIndexed { index, khz ->
+            "${index + 1}档  ${formatFreq(khz)}GHz  ($khz)"
+        }.joinToString("\n", prefix = "$title 可填写频率\n")
+
+    private fun showFrequencyHelp(title: String, available: IntArray) {
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(frequencyHelp(title, available))
+            .setPositiveButton("知道了", null)
+            .show()
+    }
 
     private fun labelForPackage(pkg: String): String {
         return labelCache.getOrPut(pkg) {
@@ -876,6 +941,33 @@ class MainActivity : Activity() {
 
     private fun fieldTitle(text: String) = label(text, 13f, COLOR_SUBTLE, Typeface.BOLD)
 
+    private fun freqRow(title: String, maxField: EditText, minField: EditText, available: IntArray) =
+        vertical().apply {
+            val header = horizontalRow().apply {
+                background = null
+                setPadding(0, 0, 0, dp(6))
+                addView(fieldTitle(title), LinearLayout.LayoutParams(
+                    0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    1f,
+                ))
+                addView(helpButton { showFrequencyHelp(title, available) },
+                    LinearLayout.LayoutParams(dp(30), dp(30)))
+            }
+            addView(header)
+            val row = horizontalRow().apply {
+                background = null
+                setPadding(0, 0, 0, 0)
+                addView(fieldBox("上限", maxField), LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                addView(fieldBox("下限", minField), LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    setMargins(dp(10), 0, 0, 0)
+                })
+            }
+            addView(row)
+        }
+
     private fun fieldBox(title: String, field: EditText) = vertical().apply {
         addView(fieldTitle(title))
         addView(field, LinearLayout.LayoutParams(
@@ -896,6 +988,13 @@ class MainActivity : Activity() {
         setPadding(dp(12), 0, dp(12), 0)
         background = rounded(COLOR_FIELD, dp(7), COLOR_STROKE)
     }
+
+    private fun helpButton(action: () -> Unit) =
+        label("!", 13f, COLOR_ACCENT, Typeface.BOLD).apply {
+            gravity = Gravity.CENTER
+            background = rounded(COLOR_FIELD, dp(15), COLOR_STROKE)
+            setOnClickListener { action() }
+        }
 
     private fun infoPanel() = label("", 13f, COLOR_TEXT, Typeface.NORMAL).apply {
         setPadding(dp(13), dp(11), dp(13), dp(11))
@@ -1080,7 +1179,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_EXPORT_LOG = 901
-        private const val APP_VERSION_NAME = "0.8.0"
+        private const val APP_VERSION_NAME = "0.9.0"
         private const val SHORT_COMMAND_DELAY_MS = 720L
         private const val LONG_COMMAND_DELAY_MS = 6500L
         private const val EXPORT_COMMAND_DELAY_MS = 1800L
@@ -1093,5 +1192,34 @@ class MainActivity : Activity() {
         private val COLOR_SUBTLE = Color.rgb(91, 101, 114)
         private val COLOR_ACCENT = Color.rgb(35, 102, 207)
         private val COLOR_GREEN = Color.rgb(32, 132, 99)
+        private val LITTLE_FREQS = intArrayOf(
+            364800, 460800, 556800, 672000, 787200, 902400, 1017600, 1132800,
+            1248000, 1344000, 1459200, 1574400, 1689600, 1804800, 1920000,
+            2035200, 2150400, 2265600,
+        )
+        private val BIG_FREQS = intArrayOf(
+            499200, 614400, 729600, 844800, 960000, 1075200, 1190400, 1286400,
+            1401600, 1497600, 1612800, 1708800, 1824000, 1920000, 2035200,
+            2131200, 2188800, 2246400, 2323200, 2380800, 2438400, 2515200,
+            2572800, 2630400, 2707200, 2764800, 2841600, 2899200, 2956800,
+            3014400, 3072000, 3148800,
+        )
+        private val TITAN_FREQS = intArrayOf(
+            499200, 614400, 729600, 844800, 960000, 1075200, 1190400, 1286400,
+            1401600, 1497600, 1612800, 1708800, 1824000, 1920000, 2035200,
+            2131200, 2188800, 2246400, 2323200, 2380800, 2438400, 2515200,
+            2572800, 2630400, 2707200, 2764800, 2841600, 2899200, 2956800,
+        )
+        private val MEGA_FREQS = intArrayOf(
+            480000, 576000, 672000, 787200, 902400, 1017600, 1132800, 1248000,
+            1363200, 1478400, 1593600, 1708800, 1824000, 1939200, 2035200,
+            2112000, 2169600, 2246400, 2304000, 2380800, 2438400, 2496000,
+            2553600, 2630400, 2688000, 2745600, 2803200, 2880000, 2937600,
+            2995200, 3052800, 3110400, 3187200, 3244800, 3302400,
+        )
+        private val GPU_FREQS = intArrayOf(
+            903000, 834000, 770000, 720000, 680000, 629000,
+            578000, 500000, 422000, 366000, 310000, 231000,
+        )
     }
 }

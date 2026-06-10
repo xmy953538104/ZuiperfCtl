@@ -8,8 +8,8 @@ import org.w3c.dom.NodeList;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
-import java.nio.file.Files;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,8 +26,6 @@ import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 
 public final class XmlProfileGenerator {
-    private static final int CUSTOM_LEVEL_START = 9000;
-
     private static final int[] LITTLE = {
             364800, 460800, 556800, 672000, 787200, 902400, 1017600, 1132800,
             1248000, 1344000, 1459200, 1574400, 1689600, 1804800, 1920000,
@@ -105,25 +103,19 @@ public final class XmlProfileGenerator {
             }
         }
 
-        int level = CUSTOM_LEVEL_START;
         List<String> summaries = new ArrayList<>();
         for (Profile profile : profiles) {
-            int currentLevel = level++;
-            appendCpuLevel(perf, types.get("LittleCore"), currentLevel, LITTLE, profile);
-            appendCpuLevel(perf, types.get("BigCore"), currentLevel, BIG, profile);
-            appendCpuLevel(perf, types.get("TitanCore"), currentLevel, TITAN, profile);
-            appendCpuLevel(perf, types.get("MegaCore"), currentLevel, MEGA, profile);
-            int gpuMax = floor(GPU_ASC, profile.gpuMax);
-            int gpuMin = ceil(GPU_ASC, profile.gpuMin);
-            if (gpuMin > gpuMax) {
-                gpuMin = gpuMax;
-            }
-            appendFreq(
-                    perf,
-                    types.get("GPU"),
-                    currentLevel,
-                    gpuIndex(gpuMax) + "_" + gpuIndex(gpuMin) + "_-1"
-            );
+            LevelValue little = cpuLevel(LITTLE, profile.littleMax, profile.littleMin);
+            LevelValue big = cpuLevel(BIG, profile.bigMax, profile.bigMin);
+            LevelValue titan = cpuLevel(TITAN, profile.titanMax, profile.titanMin);
+            LevelValue mega = cpuLevel(MEGA, profile.megaMax, profile.megaMin);
+            LevelValue gpu = gpuLevel(profile.gpuMax, profile.gpuMin);
+
+            upsertFreq(perf, types.get("LittleCore"), little);
+            upsertFreq(perf, types.get("BigCore"), big);
+            upsertFreq(perf, types.get("TitanCore"), titan);
+            upsertFreq(perf, types.get("MegaCore"), mega);
+            upsertFreq(perf, types.get("GPU"), gpu);
 
             Element app = findApp(game, profile.pkg);
             if (app == null) {
@@ -140,19 +132,27 @@ public final class XmlProfileGenerator {
             if (modes.length != 3) {
                 throw new IllegalStateException("LimitConfig mode count invalid for " + profile.pkg);
             }
-            modes[profile.modeIndex] = replaceActiveLevels(modes[profile.modeIndex], currentLevel);
+            String ids = little.level + "_" + big.level + "_" + titan.level + "_"
+                    + mega.level + "_" + gpu.level;
+            modes[profile.modeIndex] = replaceActiveLevels(modes[profile.modeIndex], ids);
             limit.setTextContent(String.join(" ", modes));
 
             summaries.add(String.format(
                     Locale.US,
-                    "%s/%s CPU %.3f-%.3fGHz GPU %d-%dMHz level=%d",
+                    "%s/%s L %.2f-%.2f B %.2f-%.2f T %.2f-%.2f M %.2f-%.2f GPU %.2f-%.2fGHz ids=%s",
                     profile.pkg,
                     profile.mode,
-                    profile.cpuMin / 1000000.0,
-                    profile.cpuMax / 1000000.0,
-                    gpuMin / 1000,
-                    gpuMax / 1000,
-                    currentLevel
+                    little.min / 1000000.0,
+                    little.max / 1000000.0,
+                    big.min / 1000000.0,
+                    big.max / 1000000.0,
+                    titan.min / 1000000.0,
+                    titan.max / 1000000.0,
+                    mega.min / 1000000.0,
+                    mega.max / 1000000.0,
+                    gpu.min / 1000000.0,
+                    gpu.max / 1000000.0,
+                    ids
             ));
         }
 
@@ -177,20 +177,37 @@ public final class XmlProfileGenerator {
                     continue;
                 }
                 String[] parts = line.split("\\|", -1);
-                if (parts.length != 6 || !validPackage(parts[0])) {
+                if (!validPackage(parts[0])) {
                     continue;
                 }
                 int modeIndex = modeIndex(parts[1]);
-                int cpuMax = Integer.parseInt(parts[2]);
-                int cpuMin = Integer.parseInt(parts[3]);
-                int gpuMax = Integer.parseInt(parts[4]);
-                int gpuMin = Integer.parseInt(parts[5]);
-                if (cpuMin <= 0 || cpuMax < cpuMin || gpuMin <= 0 || gpuMax < gpuMin) {
+                Profile profile;
+                if (parts.length == 6) {
+                    int cpuMax = Integer.parseInt(parts[2]);
+                    int cpuMin = Integer.parseInt(parts[3]);
+                    int gpuMax = Integer.parseInt(parts[4]);
+                    int gpuMin = Integer.parseInt(parts[5]);
+                    profile = new Profile(parts[0], parts[1], modeIndex,
+                            cpuMax, cpuMin, cpuMax, cpuMin, cpuMax, cpuMin, cpuMax, cpuMin,
+                            gpuMax, gpuMin);
+                } else if (parts.length == 12) {
+                    profile = new Profile(parts[0], parts[1], modeIndex,
+                            Integer.parseInt(parts[2]),
+                            Integer.parseInt(parts[3]),
+                            Integer.parseInt(parts[4]),
+                            Integer.parseInt(parts[5]),
+                            Integer.parseInt(parts[6]),
+                            Integer.parseInt(parts[7]),
+                            Integer.parseInt(parts[8]),
+                            Integer.parseInt(parts[9]),
+                            Integer.parseInt(parts[10]),
+                            Integer.parseInt(parts[11]));
+                } else {
                     continue;
                 }
-                Profile profile = new Profile(
-                        parts[0], parts[1], modeIndex, cpuMax, cpuMin, gpuMax, gpuMin);
-                result.put(parts[0] + "|" + parts[1], profile);
+                if (profile.valid()) {
+                    result.put(profile.pkg + "|" + profile.mode, profile);
+                }
             }
         }
         return new ArrayList<>(result.values());
@@ -213,30 +230,53 @@ public final class XmlProfileGenerator {
         return value.matches("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+");
     }
 
-    private static void appendCpuLevel(
-            Document document,
-            Element type,
-            int level,
-            int[] available,
-            Profile profile
-    ) {
-        int max = floor(available, profile.cpuMax);
-        int min = ceil(available, profile.cpuMin);
+    private static LevelValue cpuLevel(int[] available, int requestedMax, int requestedMin) {
+        int max = floor(available, requestedMax);
+        int min = ceil(available, requestedMin);
         if (min > max) {
             min = max;
         }
-        appendFreq(document, type, level, max + "_" + min + "_-1");
+        int maxIndex = indexOf(available, max) + 1;
+        int minIndex = indexOf(available, min) + 1;
+        return new LevelValue(minIndex * 100 + maxIndex, max + "_" + min + "_-1", max, min);
     }
 
-    private static void appendFreq(
+    private static LevelValue gpuLevel(int requestedMax, int requestedMin) {
+        int max = floor(GPU_ASC, requestedMax);
+        int min = ceil(GPU_ASC, requestedMin);
+        if (min > max) {
+            min = max;
+        }
+        int maxIndex = gpuIndex(max) + 1;
+        int minIndex = gpuIndex(min) + 1;
+        return new LevelValue(
+                minIndex * 100 + maxIndex,
+                (maxIndex - 1) + "_" + (minIndex - 1) + "_-1",
+                max,
+                min
+        );
+    }
+
+    private static void upsertFreq(
             Document document,
             Element type,
-            int level,
-            String value
+            LevelValue level
     ) {
+        NodeList children = type.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node node = children.item(i);
+            if (node instanceof Element) {
+                Element freq = (Element) node;
+                if ("Freq".equals(freq.getTagName())
+                        && Integer.toString(level.level).equals(freq.getAttribute("level"))) {
+                    freq.setTextContent(level.value);
+                    return;
+                }
+            }
+        }
         Element freq = document.createElement("Freq");
-        freq.setAttribute("level", Integer.toString(level));
-        freq.setTextContent(value);
+        freq.setAttribute("level", Integer.toString(level.level));
+        freq.setTextContent(level.value);
         type.appendChild(freq);
     }
 
@@ -259,6 +299,15 @@ public final class XmlProfileGenerator {
             }
         }
         return values[values.length - 1];
+    }
+
+    private static int indexOf(int[] values, int frequency) {
+        for (int i = 0; i < values.length; i++) {
+            if (values[i] == frequency) {
+                return i;
+            }
+        }
+        throw new IllegalArgumentException("unsupported frequency: " + frequency);
     }
 
     private static int gpuIndex(int frequency) {
@@ -315,10 +364,9 @@ public final class XmlProfileGenerator {
         return result;
     }
 
-    private static String replaceActiveLevels(String block, int level) {
+    private static String replaceActiveLevels(String block, String ids) {
         String[] segments = block.split("\\|");
         int activeCount = Math.max(1, segments.length - 1);
-        String ids = level + "_" + level + "_" + level + "_" + level + "_" + level;
         for (int i = 0; i < activeCount; i++) {
             int separator = segments[i].indexOf(':');
             String threshold = separator >= 0 ? segments[i].substring(0, separator) : "-1000";
@@ -357,12 +405,32 @@ public final class XmlProfileGenerator {
         }
     }
 
+    private static final class LevelValue {
+        final int level;
+        final String value;
+        final int max;
+        final int min;
+
+        LevelValue(int level, String value, int max, int min) {
+            this.level = level;
+            this.value = value;
+            this.max = max;
+            this.min = min;
+        }
+    }
+
     private static final class Profile {
         final String pkg;
         final String mode;
         final int modeIndex;
-        final int cpuMax;
-        final int cpuMin;
+        final int littleMax;
+        final int littleMin;
+        final int bigMax;
+        final int bigMin;
+        final int titanMax;
+        final int titanMin;
+        final int megaMax;
+        final int megaMin;
         final int gpuMax;
         final int gpuMin;
 
@@ -370,18 +438,38 @@ public final class XmlProfileGenerator {
                 String pkg,
                 String mode,
                 int modeIndex,
-                int cpuMax,
-                int cpuMin,
+                int littleMax,
+                int littleMin,
+                int bigMax,
+                int bigMin,
+                int titanMax,
+                int titanMin,
+                int megaMax,
+                int megaMin,
                 int gpuMax,
                 int gpuMin
         ) {
             this.pkg = pkg;
             this.mode = mode;
             this.modeIndex = modeIndex;
-            this.cpuMax = cpuMax;
-            this.cpuMin = cpuMin;
+            this.littleMax = littleMax;
+            this.littleMin = littleMin;
+            this.bigMax = bigMax;
+            this.bigMin = bigMin;
+            this.titanMax = titanMax;
+            this.titanMin = titanMin;
+            this.megaMax = megaMax;
+            this.megaMin = megaMin;
             this.gpuMax = gpuMax;
             this.gpuMin = gpuMin;
+        }
+
+        boolean valid() {
+            return littleMin > 0 && littleMax >= littleMin
+                    && bigMin > 0 && bigMax >= bigMin
+                    && titanMin > 0 && titanMax >= titanMin
+                    && megaMin > 0 && megaMax >= megaMin
+                    && gpuMin > 0 && gpuMax >= gpuMin;
         }
     }
 }

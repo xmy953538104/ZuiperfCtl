@@ -645,21 +645,40 @@ refresh_tick() {
 set_performance_profile() {
     pkg="$1"
     mode="$2"
-    cpu_max="$3"
-    cpu_min="$4"
-    gpu_max="$5"
-    gpu_min="$6"
+    little_max="$3"
+    little_min="$4"
+    big_max="$5"
+    big_min="$6"
+    titan_max="$7"
+    titan_min="$8"
+    mega_max="$9"
+    shift 9
+    mega_min="$1"
+    gpu_max="$2"
+    gpu_min="$3"
     if ! valid_package_name "$pkg" || ! valid_mode "$mode" ||
-        ! valid_positive_int "$cpu_max" || ! valid_positive_int "$cpu_min" ||
+        ! valid_positive_int "$little_max" || ! valid_positive_int "$little_min" ||
+        ! valid_positive_int "$big_max" || ! valid_positive_int "$big_min" ||
+        ! valid_positive_int "$titan_max" || ! valid_positive_int "$titan_min" ||
+        ! valid_positive_int "$mega_max" || ! valid_positive_int "$mega_min" ||
         ! valid_positive_int "$gpu_max" || ! valid_positive_int "$gpu_min" ||
-        [ "$cpu_max" -lt "$cpu_min" ] || [ "$gpu_max" -lt "$gpu_min" ]; then
-        log_line "invalid performance profile: $pkg $mode $cpu_max $cpu_min $gpu_max $gpu_min"
+        [ "$little_max" -lt "$little_min" ] ||
+        [ "$big_max" -lt "$big_min" ] ||
+        [ "$titan_max" -lt "$titan_min" ] ||
+        [ "$mega_max" -lt "$mega_min" ] ||
+        [ "$gpu_max" -lt "$gpu_min" ]; then
+        log_line "invalid performance profile: $pkg $mode"
         set_status "daemon=running" "last=set_performance_profile_failed" "package=$pkg"
         return 1
     fi
     rewrite_performance_without_key "$pkg" "$mode"
-    printf '%s|%s|%s|%s|%s|%s\n' \
-        "$pkg" "$mode" "$cpu_max" "$cpu_min" "$gpu_max" "$gpu_min" \
+    printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+        "$pkg" "$mode" \
+        "$little_max" "$little_min" \
+        "$big_max" "$big_min" \
+        "$titan_max" "$titan_min" \
+        "$mega_max" "$mega_min" \
+        "$gpu_max" "$gpu_min" \
         >> "$PERFORMANCE_PROFILES"
     chmod 0664 "$PERFORMANCE_PROFILES" 2>/dev/null
     clear_performance_summary
@@ -774,10 +793,17 @@ handle_request() {
     rate="$3"
     pkg="$4"
     mode="$5"
-    cpu_max="$6"
-    cpu_min="$7"
-    gpu_max="$8"
-    gpu_min="$9"
+    little_max="$6"
+    little_min="$7"
+    big_max="$8"
+    big_min="$9"
+    shift 9
+    titan_max="$1"
+    titan_min="$2"
+    mega_max="$3"
+    mega_min="$4"
+    gpu_max="$5"
+    gpu_min="$6"
     log_line "request: $source cmd=$cmd rate=$rate pkg=$pkg mode=$mode"
 
     case "$cmd" in
@@ -791,7 +817,11 @@ handle_request() {
         remove_refresh_rule) remove_refresh_rule "$pkg" ;;
         set_performance_profile)
             set_performance_profile "$pkg" "$mode" \
-                "$cpu_max" "$cpu_min" "$gpu_max" "$gpu_min"
+                "$little_max" "$little_min" \
+                "$big_max" "$big_min" \
+                "$titan_max" "$titan_min" \
+                "$mega_max" "$mega_min" \
+                "$gpu_max" "$gpu_min"
             ;;
         remove_performance_profile) remove_performance_profile "$pkg" "$mode" ;;
         apply_performance) apply_performance ;;
@@ -813,13 +843,39 @@ handle_request() {
 process_request_file() {
     file="$1"
     [ -s "$file" ] || return 0
+    cpu_max="$(prop_value cpu_max "$file")"
+    cpu_min="$(prop_value cpu_min "$file")"
+    little_max="$(prop_value little_max "$file")"
+    little_min="$(prop_value little_min "$file")"
+    big_max="$(prop_value big_max "$file")"
+    big_min="$(prop_value big_min "$file")"
+    titan_max="$(prop_value titan_max "$file")"
+    titan_min="$(prop_value titan_min "$file")"
+    mega_max="$(prop_value mega_max "$file")"
+    mega_min="$(prop_value mega_min "$file")"
+    if [ -n "$cpu_max" ] || [ -n "$cpu_min" ]; then
+        little_max="${little_max:-$cpu_max}"
+        little_min="${little_min:-$cpu_min}"
+        big_max="${big_max:-$cpu_max}"
+        big_min="${big_min:-$cpu_min}"
+        titan_max="${titan_max:-$cpu_max}"
+        titan_min="${titan_min:-$cpu_min}"
+        mega_max="${mega_max:-$cpu_max}"
+        mega_min="${mega_min:-$cpu_min}"
+    fi
     handle_request "$file" \
         "$(prop_value cmd "$file")" \
         "$(prop_value rate "$file")" \
         "$(prop_value package "$file")" \
         "$(prop_value mode "$file")" \
-        "$(prop_value cpu_max "$file")" \
-        "$(prop_value cpu_min "$file")" \
+        "$little_max" \
+        "$little_min" \
+        "$big_max" \
+        "$big_min" \
+        "$titan_max" \
+        "$titan_min" \
+        "$mega_max" \
+        "$mega_min" \
         "$(prop_value gpu_max "$file")" \
         "$(prop_value gpu_min "$file")"
     archive_request "$file"
@@ -835,13 +891,28 @@ process_atomic_settings_request() {
     chmod 0664 "$LAST_REQUEST_FILE" 2>/dev/null
 
     field_count="$(printf '%s\n' "$request" | awk -F'|' '{print NF}')"
-    if [ "$field_count" -ne 9 ]; then
+    if [ "$field_count" -ne 9 ] && [ "$field_count" -ne 15 ]; then
         log_line "invalid atomic request field count: $field_count"
         return 1
     fi
     id="$(printf '%s\n' "$request" | cut -d '|' -f 1)"
     cmd="$(printf '%s\n' "$request" | cut -d '|' -f 2)"
     [ -n "$id" ] && [ -n "$cmd" ] || return 1
+    if [ "$field_count" -eq 9 ]; then
+        cpu_max="$(printf '%s\n' "$request" | cut -d '|' -f 6)"
+        cpu_min="$(printf '%s\n' "$request" | cut -d '|' -f 7)"
+        handle_request "settings:$id" "$cmd" \
+            "$(printf '%s\n' "$request" | cut -d '|' -f 3)" \
+            "$(printf '%s\n' "$request" | cut -d '|' -f 4)" \
+            "$(printf '%s\n' "$request" | cut -d '|' -f 5)" \
+            "$cpu_max" "$cpu_min" \
+            "$cpu_max" "$cpu_min" \
+            "$cpu_max" "$cpu_min" \
+            "$cpu_max" "$cpu_min" \
+            "$(printf '%s\n' "$request" | cut -d '|' -f 8)" \
+            "$(printf '%s\n' "$request" | cut -d '|' -f 9)"
+        return 0
+    fi
     handle_request "settings:$id" "$cmd" \
         "$(printf '%s\n' "$request" | cut -d '|' -f 3)" \
         "$(printf '%s\n' "$request" | cut -d '|' -f 4)" \
@@ -849,7 +920,13 @@ process_atomic_settings_request() {
         "$(printf '%s\n' "$request" | cut -d '|' -f 6)" \
         "$(printf '%s\n' "$request" | cut -d '|' -f 7)" \
         "$(printf '%s\n' "$request" | cut -d '|' -f 8)" \
-        "$(printf '%s\n' "$request" | cut -d '|' -f 9)"
+        "$(printf '%s\n' "$request" | cut -d '|' -f 9)" \
+        "$(printf '%s\n' "$request" | cut -d '|' -f 10)" \
+        "$(printf '%s\n' "$request" | cut -d '|' -f 11)" \
+        "$(printf '%s\n' "$request" | cut -d '|' -f 12)" \
+        "$(printf '%s\n' "$request" | cut -d '|' -f 13)" \
+        "$(printf '%s\n' "$request" | cut -d '|' -f 14)" \
+        "$(printf '%s\n' "$request" | cut -d '|' -f 15)"
 }
 
 boot_restore() {
@@ -877,7 +954,7 @@ init_request_state() {
 main_loop() {
     init_dirs
     init_request_state
-    log_line "zui_perfctld v8 start"
+    log_line "zui_perfctld v9 start"
     boot_restore
     set_refresh_rate "$BASE_REFRESH_RATE"
     publish_state

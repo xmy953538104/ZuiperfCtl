@@ -1,4 +1,4 @@
-ZuiperfCtl v8 payload
+ZuiperfCtl v9 payload
 
 System components:
 - /system/priv-app/ZuiperfCtl/ZuiperfCtl.apk
@@ -18,7 +18,7 @@ Runtime data:
 App request channel:
 - Settings.System key: zui_perfctl_request_text
 - Atomic format:
-  id|cmd|rate|package|mode|cpu_max_khz|cpu_min_khz|gpu_max_khz|gpu_min_khz
+  id|cmd|rate|package|mode|little_max_khz|little_min_khz|big_max_khz|big_min_khz|titan_max_khz|titan_min_khz|mega_max_khz|mega_min_khz|gpu_max_khz|gpu_min_khz
 
 User-facing commands:
 - status
@@ -44,6 +44,7 @@ Behavior:
 - A notification rate click learns the current foreground package.
 - Choosing 120Hz removes that package's exception rule.
 - Performance profiles are converted into ZuiPP XML by XmlProfileGenerator.
+- CPU/GPU level IDs use 1-based lowIndex*100+highIndex inside each hardware type.
 - Applying performance regenerates both XML files, bind mounts them through init,
   and restarts ZuiPP/game helper packages.
 - AsoulOpt is not configured per app. The UI only reports service health and
