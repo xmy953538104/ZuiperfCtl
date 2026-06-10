@@ -85,6 +85,7 @@ class PerfCtlQuickService : Service() {
             .setShowWhen(false)
             .setLocalOnly(true)
             .setCategory(Notification.CATEGORY_SERVICE)
+            .setPriority(Notification.PRIORITY_MAX)
             .setDefaults(0)
         return builder.build()
     }
@@ -138,10 +139,9 @@ class PerfCtlQuickService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             "ZuiperfCtl 刷新率控制",
-            NotificationManager.IMPORTANCE_LOW,
+            NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = "当前应用的刷新率快捷切换"
-            setSound(null, null)
             enableVibration(false)
             setShowBadge(false)
         }
@@ -149,7 +149,7 @@ class PerfCtlQuickService : Service() {
     }
 
     companion object {
-        private const val CHANNEL_ID = "zui_perfctl_quick_v2"
+        private const val CHANNEL_ID = "zui_perfctl_quick_v3"
         private const val NOTIFICATION_ID = 18701
         private const val NOTIFICATION_REFRESH_DELAY_MS = 260L
         private const val COLOR_SELECTED_TEXT = 0xFFFFFFFF.toInt()

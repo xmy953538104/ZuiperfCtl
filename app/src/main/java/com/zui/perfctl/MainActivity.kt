@@ -344,6 +344,8 @@ class MainActivity : Activity() {
             addView(fieldTitle("运行模式"), fieldMargins())
             modeSpinner = Spinner(this@MainActivity).apply {
                 adapter = SimpleTextAdapter(PerformanceMode.entries.map { it.title })
+                background = rounded(COLOR_FIELD, dp(7), COLOR_STROKE)
+                setPadding(dp(4), 0, dp(4), 0)
                 onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                     override fun onNothingSelected(parent: AdapterView<*>?) = Unit
                     override fun onItemSelected(
@@ -370,62 +372,61 @@ class MainActivity : Activity() {
 
             littleMaxInput = numericField("上限 GHz", formatFreq(LITTLE_FREQS.last()))
             littleMinInput = numericField("下限 GHz", formatFreq(LITTLE_FREQS.first()))
-            addView(freqRow("Little cpu0-cpu2", littleMaxInput, littleMinInput, LITTLE_FREQS), fieldMargins())
 
             bigMaxInput = numericField("上限 GHz", formatFreq(BIG_FREQS.last()))
             bigMinInput = numericField("下限 GHz", formatFreq(BIG_FREQS.first()))
-            addView(freqRow("Big cpu3-cpu4", bigMaxInput, bigMinInput, BIG_FREQS), fieldMargins())
 
             titanMaxInput = numericField("上限 GHz", formatFreq(TITAN_FREQS.last()))
             titanMinInput = numericField("下限 GHz", formatFreq(TITAN_FREQS.first()))
-            addView(freqRow("Titan cpu5-cpu6", titanMaxInput, titanMinInput, TITAN_FREQS), fieldMargins())
 
             megaMaxInput = numericField("上限 GHz", formatFreq(MEGA_FREQS.last()))
             megaMinInput = numericField("下限 GHz", formatFreq(MEGA_FREQS.first()))
-            addView(freqRow("Mega cpu7", megaMaxInput, megaMinInput, MEGA_FREQS), fieldMargins())
 
             gpuMaxInput = numericField("上限 GHz", formatFreq(GPU_FREQS.first()))
             gpuMinInput = numericField("下限 GHz", formatFreq(GPU_FREQS.last()))
-            addView(freqRow("GPU", gpuMaxInput, gpuMinInput, GPU_FREQS), fieldMargins())
+            val littleRow = freqRow("Little cpu0-cpu2", littleMaxInput, littleMinInput, LITTLE_FREQS)
+            val bigRow = freqRow("Big cpu3-cpu4", bigMaxInput, bigMinInput, BIG_FREQS)
+            val titanRow = freqRow("Titan cpu5-cpu6", titanMaxInput, titanMinInput, TITAN_FREQS)
+            val megaRow = freqRow("Mega cpu7", megaMaxInput, megaMinInput, MEGA_FREQS)
+            val gpuRow = freqRow("GPU", gpuMaxInput, gpuMinInput, GPU_FREQS)
+            if (tablet) {
+                addView(freqPairRow(littleRow, bigRow), fieldMargins())
+                addView(freqPairRow(titanRow, megaRow), fieldMargins())
+                addView(gpuRow, fieldMargins())
+            } else {
+                addView(littleRow, fieldMargins())
+                addView(bigRow, fieldMargins())
+                addView(titanRow, fieldMargins())
+                addView(megaRow, fieldMargins())
+                addView(gpuRow, fieldMargins())
+            }
 
             performanceSummary = infoPanel()
             addView(performanceSummary, fieldMargins())
 
-            val saveRow = horizontalRow().apply {
-                background = null
-                setPadding(0, 0, 0, 0)
-                addView(primaryButton("保存模式") { savePerformanceProfile() },
-                    LinearLayout.LayoutParams(0, dp(44), 1f))
-                addView(commandButton("删除模式") { removePerformanceProfile() },
-                    LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-                        setMargins(dp(8), 0, 0, 0)
-                    })
-            }
-            addView(saveRow, fieldMargins())
-
-            val applyRow = horizontalRow().apply {
-                background = null
-                setPadding(0, 0, 0, 0)
-                addView(primaryButton("生成并应用调度") {
+            addView(sectionTitle("操作"), fieldMargins())
+            addView(actionPair(
+                primaryButton("保存模式") { savePerformanceProfile() },
+                commandButton("删除模式") { removePerformanceProfile() },
+            ), buttonMargins())
+            addView(actionPair(
+                primaryButton("生成并应用调度") {
                     sendCommand("正在生成并应用", settleDelayMs = LONG_COMMAND_DELAY_MS) {
                         PerfCtlRequest.send(
                             this@MainActivity,
                             PerfCtlContract.CMD_APPLY_PERFORMANCE,
                         )
                     }
-                }, LinearLayout.LayoutParams(0, dp(44), 1f))
-                addView(commandButton("恢复官方调度") {
+                },
+                commandButton("恢复官方调度") {
                     sendCommand("正在恢复官方调度", settleDelayMs = LONG_COMMAND_DELAY_MS) {
                         PerfCtlRequest.send(
                             this@MainActivity,
                             PerfCtlContract.CMD_RESTORE_ZUIPP,
                         )
                     }
-                }, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
-                    setMargins(dp(8), 0, 0, 0)
-                })
-            }
-            addView(applyRow)
+                },
+            ), buttonMargins())
         }
 
         if (tablet) {
@@ -876,15 +877,12 @@ class MainActivity : Activity() {
         String.format(Locale.US, "%.1f", freqBucket(khz) / 10.0)
 
     private fun frequencyHelp(title: String, available: IntArray): String =
-        available.groupBy { freqBucket(it) }.map { (bucket, values) ->
-            val sorted = values.sorted()
-            val detail = if (sorted.size == 1) {
-                sorted.first().toString()
-            } else {
-                "${sorted.first()}-${sorted.last()}"
+        available.map { formatFreq(it) }
+            .distinct()
+            .chunked(5)
+            .joinToString("\n", prefix = "$title\n") { row ->
+                row.joinToString("    ") { "$it GHz" }
             }
-            "${String.format(Locale.US, "%.1f", bucket / 10.0)}GHz  ($detail)"
-        }.joinToString("\n", prefix = "$title 可填写频率\n")
 
     private fun showFrequencyHelp(title: String, available: IntArray) {
         AlertDialog.Builder(this)
@@ -920,6 +918,7 @@ class MainActivity : Activity() {
 
     private fun commandName(value: String): String = when (value) {
         PerfCtlContract.CMD_LEARN_REFRESH -> "记忆刷新率"
+        "learn_refresh_global" -> "全局刷新率"
         PerfCtlContract.CMD_REMOVE_REFRESH_RULE -> "移除刷新率规则"
         PerfCtlContract.CMD_RESTORE_REFRESH -> "恢复 120Hz"
         PerfCtlContract.CMD_SET_PERFORMANCE_PROFILE -> "保存性能配置"
@@ -978,6 +977,24 @@ class MainActivity : Activity() {
             }
             addView(row)
         }
+
+    private fun freqPairRow(left: View, right: View) = horizontalRow().apply {
+        background = null
+        setPadding(0, 0, 0, 0)
+        addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(right, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+            setMargins(dp(14), 0, 0, 0)
+        })
+    }
+
+    private fun actionPair(left: TextView, right: TextView) = horizontalRow().apply {
+        background = null
+        setPadding(0, 0, 0, 0)
+        addView(left, LinearLayout.LayoutParams(0, dp(46), 1f))
+        addView(right, LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+            setMargins(dp(10), 0, 0, 0)
+        })
+    }
 
     private fun fieldBox(title: String, field: EditText) = vertical().apply {
         addView(fieldTitle(title))
@@ -1088,6 +1105,13 @@ class MainActivity : Activity() {
         setMargins(0, dp(14), 0, 0)
     }
 
+    private fun buttonMargins() = LinearLayout.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.WRAP_CONTENT,
+    ).apply {
+        setMargins(0, dp(8), 0, 0)
+    }
+
     private fun cardMargins() = LinearLayout.LayoutParams(
         ViewGroup.LayoutParams.MATCH_PARENT,
         ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1190,7 +1214,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_EXPORT_LOG = 901
-        private const val APP_VERSION_NAME = "0.10.0"
+        private const val APP_VERSION_NAME = "0.11.0"
         private const val SHORT_COMMAND_DELAY_MS = 720L
         private const val LONG_COMMAND_DELAY_MS = 6500L
         private const val EXPORT_COMMAND_DELAY_MS = 1800L

@@ -1,4 +1,4 @@
-ZuiperfCtl v10 payload
+ZuiperfCtl v11 payload
 
 System components:
 - /system/priv-app/ZuiperfCtl/ZuiperfCtl.apk
@@ -42,7 +42,8 @@ Behavior:
 - Refresh-rate baseline is a hard 120Hz lock.
 - Foreground polling runs every 0.25s while exception rules exist, and sleeps
   almost completely when there are no non-120Hz exception rules.
-- A notification rate click learns the current foreground package.
+- A notification rate click learns the current foreground package when possible;
+  if no learnable target is visible, it applies a global manual refresh lock.
 - Choosing 120Hz removes that package's exception rule.
 - Performance profiles are converted into ZuiPP XML by XmlProfileGenerator.
 - CPU/GPU level IDs use 1-based lowIndex*100+highIndex inside each hardware type.

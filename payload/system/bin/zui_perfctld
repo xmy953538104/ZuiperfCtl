@@ -53,6 +53,7 @@ LAST_TOP_APP=
 LAST_USER_APP=
 LAST_USER_APP_TIME=0
 LAST_REFRESH_RATE=
+MANUAL_REFRESH_RATE=$BASE_REFRESH_RATE
 LAST_SETTINGS_REQUEST_TEXT=
 EMPTY_TOP_TICKS=0
 HEALTH_TICKS=0
@@ -469,6 +470,7 @@ set_refresh_rate() {
 }
 
 restore_refresh_rate() {
+    MANUAL_REFRESH_RATE="$BASE_REFRESH_RATE"
     set_refresh_rate "$BASE_REFRESH_RATE"
     set_status "daemon=running" "last=restore_refresh" "rate=$BASE_REFRESH_RATE"
 }
@@ -567,28 +569,20 @@ learn_refresh() {
         set_status "daemon=running" "last=learn_refresh_failed" "rate=$rate"
         return 1
     }
+    MANUAL_REFRESH_RATE="$rate"
     top="$(current_top_app)"
-    if [ -z "$top" ] || is_overlay_package "$top" || [ "$top" = "$APP_PACKAGE" ]; then
-        if recent_last_user_app; then
-            top="$LAST_USER_APP"
-        else
-            top=
-        fi
-    elif is_non_target_package "$top"; then
+    if is_overlay_package "$top" && recent_last_user_app; then
+        top="$LAST_USER_APP"
+    elif [ -z "$top" ] || is_overlay_package "$top" || is_non_target_package "$top"; then
         top=
     fi
     if ! valid_package_name "$top"; then
-        if [ "$rate" = "$BASE_REFRESH_RATE" ]; then
-            set_refresh_rate "$rate" || return 1
-            log_line "refresh restored without learnable foreground app"
-            set_status "daemon=running" "last=learn_refresh_global" "rate=$rate"
-            notify_quick_service
-            return 0
-        fi
-        log_line "learn refresh ignored without learnable foreground app: $rate"
-        set_status "daemon=running" "last=learn_refresh_no_target" "rate=$rate"
+        MANUAL_REFRESH_RATE="$rate"
+        set_refresh_rate "$rate" || return 1
+        log_line "global refresh override: $rate"
+        set_status "daemon=running" "last=learn_refresh_global" "rate=$rate"
         notify_quick_service
-        return 1
+        return 0
     fi
     set_refresh_rate "$rate" || return 1
     remember_user_app "$top"
@@ -603,9 +597,10 @@ learn_refresh() {
 refresh_tick() {
     if [ ! -s "$REFRESH_RULES" ]; then
         NO_RULE_TOP_TICKS=$((NO_RULE_TOP_TICKS + 1))
-        if [ "$LAST_REFRESH_RATE" != "$BASE_REFRESH_RATE" ] ||
+        target_rate="${MANUAL_REFRESH_RATE:-$BASE_REFRESH_RATE}"
+        if [ "$LAST_REFRESH_RATE" != "$target_rate" ] ||
             [ "$NO_RULE_TOP_TICKS" -ge 20 ]; then
-            set_refresh_rate "$BASE_REFRESH_RATE"
+            set_refresh_rate "$target_rate"
             NO_RULE_TOP_TICKS=0
         fi
         LAST_TOP_APP=
@@ -616,29 +611,20 @@ refresh_tick() {
     top="$(current_top_app)"
     if [ -z "$top" ]; then
         EMPTY_TOP_TICKS=$((EMPTY_TOP_TICKS + 1))
-        if [ "$EMPTY_TOP_TICKS" -ge 3 ]; then
-            set_refresh_rate "$BASE_REFRESH_RATE"
-        fi
         return 0
     fi
     EMPTY_TOP_TICKS=0
-    if is_overlay_package "$top"; then
-        if recent_last_user_app; then
-            top="$LAST_USER_APP"
-        else
-            top=
-        fi
-    elif ! is_non_target_package "$top"; then
-        remember_user_app "$top"
+    if is_overlay_package "$top" || is_non_target_package "$top"; then
+        return 0
     fi
-    [ -n "$top" ] || return 0
+    remember_user_app "$top"
     if [ "$top" = "$LAST_TOP_APP" ]; then
         return 0
     fi
     LAST_TOP_APP="$top"
     settings_put_quiet "$TOP_PACKAGE_KEY" "$top"
     rate="$(rule_for_app "$top")"
-    [ -n "$rate" ] || rate="$BASE_REFRESH_RATE"
+    [ -n "$rate" ] || rate="${MANUAL_REFRESH_RATE:-$BASE_REFRESH_RATE}"
     set_refresh_rate "$rate"
     log_line "foreground refresh: $top -> $rate"
     notify_quick_service
@@ -956,7 +942,7 @@ init_request_state() {
 main_loop() {
     init_dirs
     init_request_state
-    log_line "zui_perfctld v10 start"
+    log_line "zui_perfctld v11 start"
     boot_restore
     set_refresh_rate "$BASE_REFRESH_RATE"
     publish_state
