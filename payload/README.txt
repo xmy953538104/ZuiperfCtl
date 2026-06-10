@@ -1,4 +1,4 @@
-ZuiperfCtl v14 payload
+ZuiperfCtl v15 payload
 
 System components:
 - /system/priv-app/ZuiperfCtl/ZuiperfCtl.apk
@@ -19,6 +19,8 @@ App request channel:
 - Settings.System key: zui_perfctl_request_text
 - Atomic format:
   id|cmd|rate|package|mode|little_max_khz|little_min_khz|big_max_khz|big_min_khz|titan_max_khz|titan_min_khz|mega_max_khz|mega_min_khz|gpu_max_khz|gpu_min_khz
+- Accessibility scene channel:
+  zui_perfctl_scene_event_text = elapsedRealtimeNanos|foreground.package
 
 User-facing commands:
 - status
@@ -40,8 +42,12 @@ Maintenance commands kept for ADB diagnostics:
 
 Behavior:
 - Refresh-rate baseline is a hard 120Hz lock.
-- Foreground polling always resolves the active scene package, then applies that
-  package's learned rule or the 120Hz baseline.
+- The app includes a minimal accessibility service for foreground-scene events.
+  It does not retrieve window content or perform gestures; it only receives the
+  foreground package name and immediately applies that scene's refresh rule.
+- The root daemon consumes the accessibility scene channel for GPU/profile
+  enforcement and only falls back to dumpsys polling when event updates are not
+  available.
 - Notification clicks optimistically lock peak/min/active refresh values from
   the app process before the daemon records the scene rule, avoiding a visible
   fallback to 120Hz while the daemon is still polling.

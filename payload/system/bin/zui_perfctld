@@ -17,6 +17,7 @@ LAST_REQUEST_FILE=$CONTROL_DIR/last_settings_request_text
 
 APP_PACKAGE=com.zui.zuiperfctl
 APP_SERVICE_COMPONENT=com.zui.zuiperfctl/com.zui.perfctl.PerfCtlQuickService
+APP_ACCESSIBILITY_COMPONENT=com.zui.zuiperfctl/com.zui.perfctl.PerfCtlAccessibilityService
 PROP_ZUIPP=zui_perfctl.zuipp
 PROP_ASOUL=zui_perfctl.asoul
 
@@ -45,6 +46,7 @@ PERFORMANCE_PROFILES_KEY=zui_perfctl_performance_profiles_text
 PERFORMANCE_SUMMARY_KEY=zui_perfctl_performance_summary
 TOP_PACKAGE_KEY=zui_perfctl_top_package
 ACTIVE_REFRESH_KEY=zui_perfctl_active_refresh
+SCENE_EVENT_KEY=zui_perfctl_scene_event_text
 GPU_STATE_KEY=zui_perfctl_gpu_state
 ASOUL_HEALTH_KEY=zui_perfctl_asoul_health
 XML_STATE_KEY=zui_perfctl_xml_state
@@ -67,10 +69,13 @@ LAST_GPU_PROFILE=
 LAST_GPU_STATE=
 GPU_REASSERT_TICKS=0
 LAST_SETTINGS_REQUEST_TEXT=
+LAST_SCENE_EVENT_TEXT=
 EMPTY_TOP_TICKS=0
 HEALTH_TICKS=0
 LOOP_TICKS=0
 SCENE_TTL_SECONDS=60
+FALLBACK_POLL_INTERVAL=8
+FALLBACK_POLL_TICKS=0
 
 ts() {
     date '+%Y-%m-%d %H:%M:%S'
@@ -88,8 +93,20 @@ settings_get_clean() {
     printf '%s\n' "$value"
 }
 
+settings_get_secure_clean() {
+    value="$(settings get secure "$1" 2>/dev/null)"
+    if [ "$value" = "null" ]; then
+        value=
+    fi
+    printf '%s\n' "$value"
+}
+
 settings_put_quiet() {
     settings put system "$1" "$2" >/dev/null 2>&1
+}
+
+settings_put_secure_quiet() {
+    settings put secure "$1" "$2" >/dev/null 2>&1
 }
 
 read_file_clean() {
@@ -335,6 +352,23 @@ grant_app_permissions() {
     pm grant "$APP_PACKAGE" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1
     appops set "$APP_PACKAGE" POST_NOTIFICATION allow >/dev/null 2>&1
     appops set "$APP_PACKAGE" WRITE_SETTINGS allow >/dev/null 2>&1
+    ensure_accessibility_service
+}
+
+ensure_accessibility_service() {
+    enabled="$(settings_get_secure_clean enabled_accessibility_services)"
+    case ":$enabled:" in
+        *":$APP_ACCESSIBILITY_COMPONENT:"*) ;;
+        *)
+            if [ -n "$enabled" ]; then
+                enabled="$enabled:$APP_ACCESSIBILITY_COMPONENT"
+            else
+                enabled="$APP_ACCESSIBILITY_COMPONENT"
+            fi
+            settings_put_secure_quiet enabled_accessibility_services "$enabled"
+            ;;
+    esac
+    settings_put_secure_quiet accessibility_enabled 1
 }
 
 notify_quick_service() {
@@ -583,6 +617,14 @@ recent_last_user_app() {
     [ "$age" -ge 0 ] && [ "$age" -le "$SCENE_TTL_SECONDS" ]
 }
 
+latest_scene_event_pkg() {
+    event="$(settings_get_clean "$SCENE_EVENT_KEY")"
+    [ -n "$event" ] || return 1
+    pkg="${event#*|}"
+    is_scene_package "$pkg" || return 1
+    printf '%s\n' "$pkg"
+}
+
 rule_for_app() {
     pkg="$1"
     [ -s "$REFRESH_RULES" ] || return 1
@@ -622,7 +664,14 @@ learn_refresh() {
         set_status "daemon=running" "last=learn_refresh_failed" "rate=$rate"
         return 1
     }
-    top="$(current_top_app)"
+    top="$(latest_scene_event_pkg)"
+    if is_scene_package "$top"; then
+        :
+    elif recent_last_user_app; then
+        top="$LAST_USER_APP"
+    else
+        top="$(current_top_app)"
+    fi
     if is_scene_package "$top"; then
         :
     elif recent_last_user_app; then
@@ -644,6 +693,42 @@ learn_refresh() {
     log_line "learned refresh: $top -> $rate"
     set_status "daemon=running" "last=learn_refresh" "package=$top" "rate=$rate"
     notify_quick_service
+}
+
+apply_scene_package() {
+    top="$1"
+    source="$2"
+    if ! is_scene_package "$top"; then
+        return 1
+    fi
+    remember_user_app "$top"
+    rate="$(rule_for_app "$top")"
+    [ -n "$rate" ] || rate="$BASE_REFRESH_RATE"
+    if [ "$top" = "$LAST_TOP_APP" ] && [ "$rate" = "$LAST_REFRESH_RATE" ]; then
+        if ! refresh_is_locked "$rate"; then
+            set_refresh_rate "$rate"
+            log_line "refresh reasserted: $top -> $rate source=$source"
+            notify_quick_service
+        fi
+        apply_gpu_limits_for_pkg "$top"
+        return 0
+    fi
+    LAST_TOP_APP="$top"
+    settings_put_quiet "$TOP_PACKAGE_KEY" "$top"
+    set_refresh_rate "$rate"
+    apply_gpu_limits_for_pkg "$top"
+    log_line "foreground refresh: $top -> $rate source=$source"
+    notify_quick_service
+}
+
+process_scene_event() {
+    event="$(settings_get_clean "$SCENE_EVENT_KEY")"
+    if [ -z "$event" ] || [ "$event" = "$LAST_SCENE_EVENT_TEXT" ]; then
+        return 1
+    fi
+    LAST_SCENE_EVENT_TEXT="$event"
+    pkg="${event#*|}"
+    apply_scene_package "$pkg" accessibility
 }
 
 khz_to_hz() {
@@ -775,6 +860,18 @@ restore_gpu_limits() {
 }
 
 refresh_tick() {
+    if process_scene_event; then
+        FALLBACK_POLL_TICKS=0
+        return 0
+    fi
+    FALLBACK_POLL_TICKS=$((FALLBACK_POLL_TICKS + 1))
+    if [ -n "$LAST_SCENE_EVENT_TEXT" ] &&
+        [ "$FALLBACK_POLL_TICKS" -lt "$FALLBACK_POLL_INTERVAL" ]; then
+        apply_scene_package "$LAST_TOP_APP" cached >/dev/null 2>&1
+        return 0
+    fi
+    FALLBACK_POLL_TICKS=0
+
     top="$(current_top_app)"
     if [ -z "$top" ]; then
         EMPTY_TOP_TICKS=$((EMPTY_TOP_TICKS + 1))
@@ -784,24 +881,7 @@ refresh_tick() {
     if ! is_scene_package "$top"; then
         return 0
     fi
-    remember_user_app "$top"
-    rate="$(rule_for_app "$top")"
-    [ -n "$rate" ] || rate="$BASE_REFRESH_RATE"
-    if [ "$top" = "$LAST_TOP_APP" ] && [ "$rate" = "$LAST_REFRESH_RATE" ]; then
-        if ! refresh_is_locked "$rate"; then
-            set_refresh_rate "$rate"
-            log_line "refresh reasserted: $top -> $rate"
-            notify_quick_service
-        fi
-        apply_gpu_limits_for_pkg "$top"
-        return 0
-    fi
-    LAST_TOP_APP="$top"
-    settings_put_quiet "$TOP_PACKAGE_KEY" "$top"
-    set_refresh_rate "$rate"
-    apply_gpu_limits_for_pkg "$top"
-    log_line "foreground refresh: $top -> $rate"
-    notify_quick_service
+    apply_scene_package "$top" poll
 }
 
 set_performance_profile() {
@@ -1124,7 +1204,7 @@ init_request_state() {
 main_loop() {
     init_dirs
     init_request_state
-    log_line "zui_perfctld v14 start"
+    log_line "zui_perfctld v15 start"
     boot_restore
     set_refresh_rate "$BASE_REFRESH_RATE"
     publish_state
