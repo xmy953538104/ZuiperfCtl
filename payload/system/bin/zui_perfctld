@@ -18,6 +18,11 @@ LAST_REQUEST_FILE=$CONTROL_DIR/last_settings_request_text
 APP_PACKAGE=com.zui.zuiperfctl
 APP_SERVICE_COMPONENT=com.zui.zuiperfctl/com.zui.perfctl.PerfCtlQuickService
 APP_ACCESSIBILITY_COMPONENT=com.zui.zuiperfctl/com.zui.perfctl.PerfCtlAccessibilityService
+SAFE_CENTER_PACKAGE=com.zui.safecenter
+SAFE_CENTER_DB=/data/user/0/$SAFE_CENTER_PACKAGE/databases/BlackWhite.db
+SAFE_CENTER_KEEPALIVE_FLAG=$DATA_ROOT/safecenter_keepalive_done.flag
+SAFE_CENTER_KEEPALIVE_BACKUP_FLAG=$DATA_ROOT/safecenter_keepalive_backup.flag
+SAFE_CENTER_KEEPALIVE_LOG=$LOG_DIR/safecenter_keepalive.log
 PROP_ZUIPP=zui_perfctl.zuipp
 PROP_ASOUL=zui_perfctl.asoul
 
@@ -71,7 +76,10 @@ GPU_REASSERT_TICKS=0
 LAST_SETTINGS_REQUEST_TEXT=
 LAST_SCENE_EVENT_TEXT=
 HEALTH_TICKS=0
-APP_HEALTH_TICKS=0
+SAFE_CENTER_KEEPALIVE_TICKS=0
+SAFE_CENTER_KEEPALIVE_ATTEMPTS=0
+SAFE_CENTER_KEEPALIVE_MAX_ATTEMPTS=60
+SAFE_CENTER_KEEPALIVE_DONE=0
 LOOP_TICKS=0
 SCENE_TTL_SECONDS=60
 LOOP_SLEEP_SECONDS=0.5
@@ -381,6 +389,78 @@ notify_quick_service() {
         am startservice -n "$APP_SERVICE_COMPONENT" >/dev/null 2>&1
 }
 
+app_apk_path() {
+    path="$(pm path "$APP_PACKAGE" 2>/dev/null | head -n 1)"
+    path="${path#package:}"
+    [ -f "$path" ] || return 1
+    printf '%s\n' "$path"
+}
+
+backup_safecenter_db_once() {
+    [ -f "$SAFE_CENTER_KEEPALIVE_BACKUP_FLAG" ] && return 0
+    [ -s "$SAFE_CENTER_DB" ] || return 1
+    backup="$SAFE_CENTER_DB.bak_zui_perfctl_$(date '+%Y%m%d_%H%M%S')"
+    if cp -p "$SAFE_CENTER_DB" "$backup" >/dev/null 2>&1; then
+        printf '%s\n' "$backup" > "$SAFE_CENTER_KEEPALIVE_BACKUP_FLAG"
+        chmod 0664 "$SAFE_CENTER_KEEPALIVE_BACKUP_FLAG" 2>/dev/null
+        return 0
+    fi
+    return 1
+}
+
+patch_safecenter_keepalive() {
+    [ -f "$SAFE_CENTER_KEEPALIVE_FLAG" ] && {
+        SAFE_CENTER_KEEPALIVE_DONE=1
+        return 0
+    }
+    [ -s "$SAFE_CENTER_DB" ] || {
+        log_line "safecenter keepalive deferred: db missing"
+        return 1
+    }
+    apk="$(app_apk_path)" || {
+        log_line "safecenter keepalive deferred: apk missing"
+        return 1
+    }
+    backup_safecenter_db_once || true
+    tmp_log="$SAFE_CENTER_KEEPALIVE_LOG.tmp"
+    if CLASSPATH="$apk" app_process /system/bin \
+        com.zui.perfctl.SafeCenterKeepAlivePatcher \
+        "$APP_PACKAGE" "$SAFE_CENTER_DB" > "$tmp_log" 2>&1; then
+        cat "$tmp_log" > "$SAFE_CENTER_KEEPALIVE_LOG" 2>/dev/null
+        rm -f "$tmp_log"
+        chown system:system "$SAFE_CENTER_DB" >/dev/null 2>&1
+        chmod 0600 "$SAFE_CENTER_DB" >/dev/null 2>&1
+        restorecon "$SAFE_CENTER_DB" >/dev/null 2>&1 || true
+        am force-stop "$SAFE_CENTER_PACKAGE" >/dev/null 2>&1 || true
+        : > "$SAFE_CENTER_KEEPALIVE_FLAG"
+        chmod 0664 "$SAFE_CENTER_KEEPALIVE_FLAG" 2>/dev/null
+        SAFE_CENTER_KEEPALIVE_DONE=1
+        summary="$(head -n 1 "$SAFE_CENTER_KEEPALIVE_LOG" 2>/dev/null)"
+        log_line "safecenter keepalive applied: $summary"
+        return 0
+    fi
+    cat "$tmp_log" > "$SAFE_CENTER_KEEPALIVE_LOG" 2>/dev/null
+    rm -f "$tmp_log"
+    summary="$(head -n 1 "$SAFE_CENTER_KEEPALIVE_LOG" 2>/dev/null)"
+    log_line "safecenter keepalive failed: $summary"
+    return 1
+}
+
+maybe_patch_safecenter_keepalive() {
+    [ "$SAFE_CENTER_KEEPALIVE_DONE" = "1" ] && return 0
+    [ -f "$SAFE_CENTER_KEEPALIVE_FLAG" ] && {
+        SAFE_CENTER_KEEPALIVE_DONE=1
+        return 0
+    }
+    [ "$SAFE_CENTER_KEEPALIVE_ATTEMPTS" -lt "$SAFE_CENTER_KEEPALIVE_MAX_ATTEMPTS" ] || {
+        SAFE_CENTER_KEEPALIVE_DONE=1
+        log_line "safecenter keepalive stopped after $SAFE_CENTER_KEEPALIVE_ATTEMPTS attempts"
+        return 1
+    }
+    SAFE_CENTER_KEEPALIVE_ATTEMPTS=$((SAFE_CENTER_KEEPALIVE_ATTEMPTS + 1))
+    patch_safecenter_keepalive
+}
+
 init_dirs() {
     mkdir -p "$CONTROL_DIR" "$DONE_DIR" "$ZUI_DIR" "$ASOUL_DIR" \
         "$REFRESH_DIR" "$PERFORMANCE_DIR" "$LOG_DIR"
@@ -579,15 +659,6 @@ is_scene_package() {
     return 0
 }
 
-is_default_scene_package() {
-    case "$1" in
-        com.zui.launcher|com.android.launcher3|com.lenovo.launcher|com.motorola.launcher)
-            return 0
-            ;;
-    esac
-    return 1
-}
-
 remember_user_app() {
     pkg="$1"
     valid_package_name "$pkg" || return 1
@@ -688,12 +759,6 @@ learn_refresh() {
     if ! is_scene_package "$top"; then
         log_line "learn refresh ignored without scene target: $rate"
         set_status "daemon=running" "last=learn_refresh_no_target" "rate=$rate"
-        notify_quick_service
-        return 1
-    fi
-    if is_default_scene_package "$top" && [ "$rate" != "$BASE_REFRESH_RATE" ]; then
-        log_line "learn refresh ignored for default scene: $top -> $rate"
-        set_status "daemon=running" "last=learn_refresh_default_scene" "package=$top" "rate=$rate"
         notify_quick_service
         return 1
     fi
@@ -1199,22 +1264,24 @@ init_request_state() {
 main_loop() {
     init_dirs
     init_request_state
-    log_line "zui_perfctld v17 start"
+    log_line "zui_perfctld v18 start"
     boot_restore
     set_refresh_rate "$BASE_REFRESH_RATE"
     publish_state
     set_status "daemon=running" "last=init"
     notify_quick_service
+    maybe_patch_safecenter_keepalive || true
 
     while true; do
         process_atomic_settings_request
         process_request_file "$ADB_REQUEST"
         refresh_tick
-        APP_HEALTH_TICKS=$((APP_HEALTH_TICKS + 1))
-        if [ "$APP_HEALTH_TICKS" -ge 20 ]; then
-            grant_app_permissions
-            notify_quick_service
-            APP_HEALTH_TICKS=0
+        if [ "$SAFE_CENTER_KEEPALIVE_DONE" != "1" ]; then
+            SAFE_CENTER_KEEPALIVE_TICKS=$((SAFE_CENTER_KEEPALIVE_TICKS + 1))
+            if [ "$SAFE_CENTER_KEEPALIVE_TICKS" -ge 20 ]; then
+                maybe_patch_safecenter_keepalive || true
+                SAFE_CENTER_KEEPALIVE_TICKS=0
+            fi
         fi
         HEALTH_TICKS=$((HEALTH_TICKS + 1))
         if [ "$HEALTH_TICKS" -ge 40 ]; then

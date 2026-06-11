@@ -7,12 +7,6 @@ import android.provider.Settings
 object RefreshSceneController {
     const val BASE_REFRESH_RATE = 120
     private const val SCENE_EVENT_TTL_NANOS = 60_000_000_000L
-    private val defaultScenePackages = setOf(
-        "com.zui.launcher",
-        "com.android.launcher3",
-        "com.lenovo.launcher",
-        "com.motorola.launcher",
-    )
 
     fun isScenePackage(context: Context, pkg: String): Boolean {
         return PackageNames.isValid(pkg) &&
@@ -31,8 +25,6 @@ object RefreshSceneController {
 
     fun currentLearnPackage(context: Context): String {
         return currentScenePackage(context)
-            .takeIf { isQuickLearnPackage(context, it) }
-            .orEmpty()
     }
 
     fun rateForPackage(context: Context, pkg: String): Int {
@@ -117,7 +109,4 @@ object RefreshSceneController {
         return event.substring(separator + 1).takeIf { isScenePackage(context, it) }
     }
 
-    private fun isQuickLearnPackage(context: Context, pkg: String): Boolean {
-        return isScenePackage(context, pkg) && pkg !in defaultScenePackages
-    }
 }

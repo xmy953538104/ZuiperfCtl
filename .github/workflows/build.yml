@@ -68,5 +68,5 @@ jobs:
       - name: Upload payload
         uses: actions/upload-artifact@v4
         with:
-          name: zui-perfctl-v17-payload
+          name: zui-perfctl-v18-payload
           path: payload

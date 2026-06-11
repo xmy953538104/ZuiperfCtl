@@ -1,4 +1,4 @@
-ZuiperfCtl v17 payload
+ZuiperfCtl v18 payload
 
 System components:
 - /system/priv-app/ZuiperfCtl/ZuiperfCtl.apk
@@ -47,14 +47,16 @@ Behavior:
   foreground package name and immediately applies that scene's refresh rule.
 - The root daemon consumes the accessibility scene channel for GPU/profile
   enforcement. It does not poll dumpsys for foreground-app detection.
-- Notification clicks optimistically lock peak/min/active refresh values only
-  when the current scene is a real learned app. Default scenes such as the
-  launcher are not learned as 60/90/144/165Hz exceptions.
+- Notification clicks learn and lock the current reliable scene, including the
+  launcher. Unconfigured scenes simply fall back to the 120Hz baseline.
 - The daemon validates accessibility scene events with a 60-second uptime TTL
   before using them as fresh foreground events, then falls back to the last
   known top package for long-running foreground apps.
-- The daemon reasserts notification and accessibility state every 10 seconds,
-  and the image patcher adds ZuiperfCtl to ZUI memory-cleaner, power-policy,
+- On first boot, the daemon patches SafeCenter BlackWhite.db once by adding
+  ZuiperfCtl to AccelerateList with the same AES package encoding used by
+  ZUI Security. It retries only until success or a bounded attempt limit, then
+  stops.
+- The image patcher also adds ZuiperfCtl to ZUI memory-cleaner, power-policy,
   background-intent, OverHeat, and DeviceIdle keepalive whitelists.
 - The daemon re-checks peak_refresh_rate and min_refresh_rate even when the
   foreground scene has not changed, so ZUI drift is locked back to the learned
