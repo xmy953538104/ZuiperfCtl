@@ -7,16 +7,21 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.database.ContentObserver
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
 import android.widget.RemoteViews
 
 class ZuiControlQuickService : Service() {
     private val handler = Handler(Looper.getMainLooper())
+    private val refreshNotificationRunnable = Runnable { updateNotification(preferPending = false) }
+    private val settlePendingRateRunnable = Runnable { updateNotification(preferPending = false) }
     private lateinit var notificationManager: NotificationManager
+    private var stateObserver: ContentObserver? = null
     private var pendingRate: Int? = null
     private var pendingRateUntilMs = 0L
 
@@ -25,6 +30,7 @@ class ZuiControlQuickService : Service() {
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         createChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
+        registerStateObserver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -42,23 +48,37 @@ class ZuiControlQuickService : Service() {
             pendingRate = rate
             pendingRateUntilMs = SystemClock.elapsedRealtime() + PENDING_RATE_TIMEOUT_MS
             ZuiControlClient.setCurrentSceneDisplayHz(rate)
-            handler.removeCallbacksAndMessages(null)
+            handler.removeCallbacks(refreshNotificationRunnable)
+            handler.removeCallbacks(settlePendingRateRunnable)
             updateNotification(rate)
-            handler.postDelayed({ updateNotification() }, PENDING_RATE_TIMEOUT_MS + 80L)
+            handler.postDelayed(settlePendingRateRunnable, PENDING_RATE_TIMEOUT_MS + 80L)
         } else {
-            updateNotification()
+            updateNotification(preferPending = false)
         }
         return START_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun updateNotification(rateOverride: Int? = null) {
-        notificationManager.notify(NOTIFICATION_ID, buildNotification(rateOverride))
+    override fun onDestroy() {
+        stateObserver?.let { contentResolver.unregisterContentObserver(it) }
+        stateObserver = null
+        handler.removeCallbacks(refreshNotificationRunnable)
+        handler.removeCallbacks(settlePendingRateRunnable)
+        super.onDestroy()
     }
 
-    private fun buildNotification(rateOverride: Int? = null): Notification {
-        val selectedRate = rateOverride ?: pendingDisplayRate() ?: currentRate()
+    private fun updateNotification(rateOverride: Int? = null, preferPending: Boolean = true) {
+        if (!preferPending && rateOverride == null) {
+            clearPendingRate()
+        }
+        notificationManager.notify(NOTIFICATION_ID, buildNotification(rateOverride, preferPending))
+    }
+
+    private fun buildNotification(rateOverride: Int? = null, preferPending: Boolean = true): Notification {
+        val selectedRate = rateOverride
+            ?: (if (preferPending) pendingDisplayRate() else null)
+            ?: currentRate()
         val content = RemoteViews(packageName, R.layout.notification_zuicontrol).apply {
             setTextViewText(R.id.notification_title, "ZuiControl")
             bindRate(this, R.id.rate_60, 60, selectedRate, ZuiControlContract.ACTION_SET_60)
@@ -96,14 +116,47 @@ class ZuiControlQuickService : Service() {
         return builder.build()
     }
 
+    private fun registerStateObserver() {
+        val observer = object : ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) {
+                scheduleNotificationRefresh()
+            }
+        }
+        stateObserver = observer
+        contentResolver.registerContentObserver(
+            Settings.System.getUriFor(ZuiControlContract.KEY_ACTIVE_REFRESH),
+            false,
+            observer,
+        )
+        contentResolver.registerContentObserver(
+            Settings.System.getUriFor(ZuiControlContract.KEY_SCENE_EVENT_TEXT),
+            false,
+            observer,
+        )
+        contentResolver.registerContentObserver(
+            Settings.System.getUriFor(ZuiControlContract.KEY_STATUS_TEXT),
+            false,
+            observer,
+        )
+    }
+
+    private fun scheduleNotificationRefresh() {
+        handler.removeCallbacks(refreshNotificationRunnable)
+        handler.postDelayed(refreshNotificationRunnable, NOTIFICATION_REFRESH_DEBOUNCE_MS)
+    }
+
     private fun pendingDisplayRate(): Int? {
         val rate = pendingRate ?: return null
         if (SystemClock.elapsedRealtime() <= pendingRateUntilMs) {
             return rate
         }
+        clearPendingRate()
+        return null
+    }
+
+    private fun clearPendingRate() {
         pendingRate = null
         pendingRateUntilMs = 0L
-        return null
     }
 
     private fun bindRate(
@@ -163,6 +216,7 @@ class ZuiControlQuickService : Service() {
         private const val CHANNEL_ID = "zui_control_quick_v7"
         private const val NOTIFICATION_ID = 18701
         private const val PENDING_RATE_TIMEOUT_MS = 1600L
+        private const val NOTIFICATION_REFRESH_DEBOUNCE_MS = 160L
         private const val COLOR_SELECTED_TEXT = 0xFFFFFFFF.toInt()
         private const val COLOR_NORMAL_TEXT = 0xFF1C222A.toInt()
 
