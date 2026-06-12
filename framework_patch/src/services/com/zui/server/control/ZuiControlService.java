@@ -129,6 +129,11 @@ public final class ZuiControlService extends Binder {
         mRawFocusedPackage = safe(pkg);
         mCurrentDisplayId = resolveDisplayId(displayId);
         if (mRawFocusedPackage.isEmpty() || isTransientPackage(mRawFocusedPackage)) {
+            String scene = !mCurrentScenePackage.isEmpty()
+                    ? mCurrentScenePackage : mLastNonTransientScenePackage;
+            if (!scene.isEmpty()) {
+                applyProfile(profileFor(scene, mCurrentUserId), "transient");
+            }
             publishState();
             return;
         }
