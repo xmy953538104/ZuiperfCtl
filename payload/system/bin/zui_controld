@@ -739,10 +739,8 @@ apply_scene_package() {
         return 0
     fi
     LAST_TOP_APP="$top"
-    settings_put_quiet "$TOP_PACKAGE_KEY" "$top"
     apply_gpu_limits_for_pkg "$top"
     log_line "foreground gpu/profile scene: $top source=$source refresh_owner=$REFRESH_OWNER"
-    notify_quick_service
 }
 
 process_scene_event() {
@@ -752,7 +750,7 @@ process_scene_event() {
     fi
     LAST_SCENE_EVENT_TEXT="$event"
     pkg="$(latest_scene_event_pkg)" || return 1
-    apply_scene_package "$pkg" accessibility
+    apply_scene_package "$pkg" system_server
 }
 
 khz_to_hz() {
@@ -883,9 +881,8 @@ restore_gpu_limits() {
     fi
 }
 
-refresh_tick() {
-    top="$(active_scene_pkg)" || return 0
-    apply_scene_package "$top" cached >/dev/null 2>&1
+scene_event_tick() {
+    process_scene_event >/dev/null 2>&1 || true
 }
 
 set_performance_profile() {
@@ -1220,7 +1217,7 @@ main_loop() {
     while true; do
         process_atomic_settings_request
         process_request_file "$ADB_REQUEST"
-        refresh_tick
+        scene_event_tick
         if [ "$SAFE_CENTER_KEEPALIVE_DONE" != "1" ]; then
             SAFE_CENTER_KEEPALIVE_TICKS=$((SAFE_CENTER_KEEPALIVE_TICKS + 1))
             if [ "$SAFE_CENTER_KEEPALIVE_TICKS" -ge 20 ]; then

@@ -933,15 +933,6 @@ class MainActivity : Activity() {
         if (refreshRules.isNotEmpty()) {
             return
         }
-        setting(ZuiControlContract.KEY_RULES_TEXT).lineSequence().forEach { line ->
-            val parts = line.trim().split("=", limit = 2)
-            val rate = parts.getOrNull(1)?.toIntOrNull()
-            if (parts.size == 2 && PackageNames.isValid(parts[0]) &&
-                rate != null && rate in ZuiControlContract.rates &&
-                rate != RefreshSceneController.BASE_REFRESH_RATE) {
-                refreshRules[parts[0]] = rate
-            }
-        }
     }
 
     private fun sendCommand(
@@ -1047,10 +1038,7 @@ class MainActivity : Activity() {
     private fun String.cleanSetting(): String = removeSuffix(".0")
 
     private fun commandName(value: String): String = when (value) {
-        ZuiControlContract.CMD_LEARN_REFRESH -> "记忆刷新率"
         "learn_refresh_no_target" -> "未找到前台场景"
-        ZuiControlContract.CMD_REMOVE_REFRESH_RULE -> "移除刷新率规则"
-        ZuiControlContract.CMD_RESTORE_REFRESH -> "恢复 120Hz"
         ZuiControlContract.CMD_SET_PERFORMANCE_PROFILE -> "保存性能配置"
         ZuiControlContract.CMD_REMOVE_PERFORMANCE_PROFILE -> "删除性能配置"
         ZuiControlContract.CMD_APPLY_PERFORMANCE -> "应用性能调度"

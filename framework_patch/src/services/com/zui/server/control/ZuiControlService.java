@@ -3,9 +3,12 @@ package com.zui.server.control;
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.database.ContentObserver;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.DisplayManagerInternal;
 import android.os.Binder;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Parcel;
 import android.os.RemoteException;
 import android.os.ServiceManager;
@@ -92,6 +95,7 @@ public final class ZuiControlService extends Binder {
         loadProfiles();
         sInstance = this;
         attachInterface(null, DESCRIPTOR);
+        registerPeakObserver();
         publishState();
     }
 
@@ -374,6 +378,47 @@ public final class ZuiControlService extends Binder {
         }
         mLastSyncedPeakHz = peakHz;
         return peakHz;
+    }
+
+    private void registerPeakObserver() {
+        try {
+            mContext.getContentResolver().registerContentObserver(
+                    Settings.System.getUriFor(SETTING_PEAK_REFRESH_RATE),
+                    false,
+                    new ContentObserver(new Handler(Looper.getMainLooper())) {
+                        @Override
+                        public void onChange(boolean selfChange) {
+                            onPeakRefreshRateChanged();
+                        }
+                    });
+        } catch (Throwable t) {
+            Log.w(TAG, "peak observer unavailable", t);
+        }
+    }
+
+    private synchronized void onPeakRefreshRateChanged() {
+        if (SystemProperties.getBoolean("persist.zui_control.disable", false)
+                || SystemProperties.getBoolean("persist.zui_control.refresh.disable", false)) {
+            return;
+        }
+        if (!isPeakRefreshRateSynced(mTargetDisplayHz)) {
+            int peakHz = syncPeakRefreshRate(mTargetDisplayHz);
+            mLastError = "";
+            mLastApply = "peakObserver:target=" + mTargetDisplayHz + ":peakBridge=" + peakHz;
+            publishState();
+        }
+    }
+
+    private boolean isPeakRefreshRateSynced(int targetHz) {
+        int peakHz = targetHz > 120 ? targetHz : 120;
+        String desired = peakHz + ".0";
+        long token = Binder.clearCallingIdentity();
+        try {
+            return desired.equals(Settings.System.getString(mContext.getContentResolver(),
+                    SETTING_PEAK_REFRESH_RATE));
+        } finally {
+            Binder.restoreCallingIdentity(token);
+        }
     }
 
     private void resetLastApplied() {
