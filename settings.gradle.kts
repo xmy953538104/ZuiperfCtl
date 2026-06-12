@@ -14,5 +14,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ZuiperfCtl"
+rootProject.name = "ZuiControl"
 include(":app")
+include(":framework-stubs")

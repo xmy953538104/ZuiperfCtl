@@ -1,4 +1,0 @@
-;; ZuiperfCtl init bind-mount bridge.
-;; The shell-domain daemon only requests init actions through zui_perfctl.* properties.
-;; Init performs the file bind mounts, then the daemon verifies /proc/mounts.
-(allow init system_file (file (mounton)))

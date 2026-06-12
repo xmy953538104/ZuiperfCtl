@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AppPolicy version="20240626">
+    <!--<NameDefine>  Attribute define, do not modify-->
+    <!--<AttributeName name = "PerformanceType" id="0">
+        <AttributeValue value="Game">启用游戏级别高性能</AttributeValue>
+        <AttributeValue value="Full">启用最高级别性能</AttributeValue>
+        <AttributeValue value="LowPower">启用低功耗模式</AttributeValue>
+        <AttributeValue value="Uclamp">启用boost模式</AttributeValue>
+    </AttributeName>
+    <AttributeName name = "GovernorConfig" id="1">
+        <AttributeValue value="Optimize">启动governor节点写入，原schedboost = 100</AttributeValue>
+        <AttributeValue value="Default">启动governor节点写入，原schedboost = 0</AttributeValue>
+    </AttributeName>
+    <AttributeName name = "GameLimitConfig">
+        游戏参数配置，用于游戏助手进行CPUGPU限频提频boost。格式如下：
+        temp1:小核_大核_超大核_GPU|temp2:小核_大核_超大核_GPU（最多支持4个temp类，以“|”分割）
+        均衡模式参数 省电模式参数 野兽模式参数（以“ ”分割）
+    </AttributeName>
+    <AttributeName name = "UPQLimitConfig">
+        UPQ游戏参数配置，在应用支持UPQ时替代均衡模式：
+        temp1:小核_大核_超大核_GPU|temp2:小核_大核_超大核_GPU（最多支持4个temp类，以“|”分割）
+        UPQ级别1参数 UPQ级别2参数 UPQ级别3参数 UPQ级别4参数 UPQ级别5参数（以“ ”分割）
+    </AttributeName>
+    <AttributeName name = "BestImageLimitConfig">
+        极致画质游戏参数配置，在应用设置极致画质时替代GameLimitConfig：
+        temp1:小核_大核_超大核_GPU|temp2:小核_大核_超大核_GPU（最多支持4个temp类，以“|”分割）
+        均衡模式参数 省电模式参数 野兽模式参数（以“ ”分割）
+    </AttributeName>
+    <AttributeName name = "ThermalConfig">
+        设置thermal code，供bsp进行不同的thermal策略
+    </AttributeName>
+    <AttributeName name="AssistentSupport">
+        <AttributeValue value="TGPA">
+            游戏支持TGPA游戏助手，需要等待游戏连接TAssistent。
+        </AttributeValue>
+    </AttributeName>
+    <AttributeName name="RefreshRate">
+        应用/游戏的特殊刷新率要求，在设置中选择智能刷新率后生效
+    </AttributeName>
+    <AttributeName name="PowerSaveRefreshRate">
+        应用/游戏的特殊省电模式刷新率要求，在游戏下拉栏中选择节能模式后生效
+    </AttributeName>
+</NameDefine>-->
+
+    <AppList type="game">
+        <!-- ZuiControl unified policy: keep default plus user games only. -->
+        <App name="default" pkg="default">
+            <Attribute name="SpecialBoostConfig">NoBoost NoBoost SavageBoost</Attribute>
+            <Attribute name="RefreshRateConfig">120</Attribute>
+            <Attribute name="ThermalConfig">200 100 300</Attribute>
+            <Attribute name="PowerSaveRefreshRateConfig">30</Attribute>
+            <Attribute name="LimitConfig">-1000:-1001_-1001_-1001_-1001_-1001|-1001:-1002_-1002_-1002_-1002_-1002|-1002:-1003_-1003_-1003_-1003_-1003 -1000:-1004_-1004_-1004_-1004_-1004|-1004:-1005_-1005_-1005_-1005_-1005|-1005:-1006_-1006_-1006_-1006_-1006 -1000:-1007_-1007_-1007_-1007_-1007|-1007:-1008_-1008_-1008_-1008_-1008|-1008:-1009_-1009_-1009_-1009_-1009</Attribute>
+        </App>
+        <App name="PUBGMHD" pkg="com.tencent.tmgp.pubgmhd">
+            <Attribute name="ThermalConfig">200 100 300</Attribute>
+            <Attribute name="RefreshRateConfig">120</Attribute>
+            <Attribute name="SpecialBoostConfig">NoBoost NoBoost NoBoost</Attribute>
+            <Attribute name="PowerSaveRefreshRateConfig">60</Attribute>
+            <Attribute name="LimitConfig">-1000:514_1424_317_525_1206|8:411_321_215_418_1107|11:311_218_213_315_1209 -1000:115_124_113_114_1206|6:113_120_111_112_1208|8:107_113_110_110_1210 -1000:915_1028_1025_1135_1004|10:815_927_924_1030_1105|13:715_926_823_929_1206</Attribute>
+        </App>
+        <App name="HonorOfKings" pkg="com.tencent.tmgp.sgame">
+            <Attribute name="ThermalConfig">200 100 300</Attribute>
+            <Attribute name="RefreshRateConfig">120</Attribute>
+            <Attribute name="SpecialBoostConfig">NoBoost NoBoost NoBoost</Attribute>
+            <Attribute name="PowerSaveRefreshRateConfig">60</Attribute>
+            <Attribute name="LimitConfig">-1000:712_614_515_619_704|2:712_614_515_619_704|4:712_614_515_619_704|13:410_108_108_107_1108 -1000:108_105_105_110_1207|2:108_105_105_110_1207|3:108_105_105_110_1207|10:107_104_104_106_1209 -1000:718_932_729_2735_901|3:718_932_729_2731_901|5:718_932_729_2731_901|14:513_108_108_107_1007</Attribute>
+        </App>
+        <App name="WutheringWaves" pkg="com.kurogame.mingchao">
+            <Attribute name="ThermalConfig">200 100 300</Attribute>
+            <Attribute name="RefreshRateConfig">60</Attribute>
+            <Attribute name="SpecialBoostConfig">NoBoost NoBoost NoBoost</Attribute>
+            <Attribute name="PowerSaveRefreshRateConfig">30</Attribute>
+            <Attribute name="LimitConfig">-1000:412_311_312_418_1006|2:412_311_312_418_1006|4:412_311_312_418_1006|13:309_108_108_107_1209 -1000:108_106_107_107_1206|1:108_106_107_107_1206|3:108_106_107_107_1206|10:105_103_104_104_1209 -1000:1518_1332_529_1235_601|6:1518_1332_529_1235_601|9:1518_1332_529_1235_601|14:1415_108_108_107_1008</Attribute>
+        </App>
+    </AppList>
+
+</AppPolicy>

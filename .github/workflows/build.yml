@@ -1,4 +1,4 @@
-name: Build ZuiperfCtl
+name: Build ZuiControl
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
     paths:
       - "app/**"
       - "payload/**"
+      - "framework_patch/**"
       - "scripts/**"
       - ".github/workflows/build.yml"
       - "*.gradle.kts"
@@ -37,36 +38,37 @@ jobs:
 
       - name: Check scripts
         run: |
-          python3 -m py_compile scripts/ApplyZuiperfCtlPayload.py
-          bash -n payload/system/bin/zui_perfctld
-          bash -n payload/system/etc/zui_perfctl/zui_asoulopt.sh
+          python3 -m py_compile scripts/ApplyZuiControlPayload.py
+          python3 -m py_compile scripts/PatchZuiControlFramework.py
+          bash -n payload/system/bin/zui_controld
+          bash -n payload/system/etc/zui_control/zui_asoulopt.sh
 
       - name: Decode release keystore
         run: |
-          printf '%s' "${{ secrets.KEYSTORE }}" | base64 -d > "$RUNNER_TEMP/zuiperfctl-release.jks"
+          printf '%s' "${{ secrets.KEYSTORE }}" | base64 -d > "$RUNNER_TEMP/ZuiControl-release.jks"
 
       - name: Build release APK
         run: |
           gradle -p . :app:assembleRelease \
-            -Pzuiperf.storeFile="$RUNNER_TEMP/zuiperfctl-release.jks" \
-            -Pzuiperf.storePassword="${{ secrets.KEYSTORE_PASSWORD }}" \
-            -Pzuiperf.keyAlias="${{ secrets.KEY_ALIAS }}" \
-            -Pzuiperf.keyPassword="${{ secrets.KEY_PASSWORD }}"
+            -Pzuicontrol.storeFile="$RUNNER_TEMP/ZuiControl-release.jks" \
+            -Pzuicontrol.storePassword="${{ secrets.KEYSTORE_PASSWORD }}" \
+            -Pzuicontrol.keyAlias="${{ secrets.KEY_ALIAS }}" \
+            -Pzuicontrol.keyPassword="${{ secrets.KEY_PASSWORD }}"
 
       - name: Stage payload APK
         run: |
-          mkdir -p payload/system/priv-app/ZuiperfCtl
+          mkdir -p payload/system/priv-app/ZuiControl
           cp app/build/outputs/apk/release/app-release.apk \
-            payload/system/priv-app/ZuiperfCtl/ZuiperfCtl.apk
+            payload/system/priv-app/ZuiControl/ZuiControl.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ZuiperfCtl-release-apk
+          name: ZuiControl-release-apk
           path: app/build/outputs/apk/release/app-release.apk
 
       - name: Upload payload
         uses: actions/upload-artifact@v4
         with:
-          name: zui-perfctl-v18-payload
+          name: zui-control-v19-payload
           path: payload

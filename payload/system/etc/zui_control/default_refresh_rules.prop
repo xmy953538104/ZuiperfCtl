@@ -1,0 +1,3 @@
+# Optional initial refresh-rate exceptions.
+# Format: package.name=60|90
+# 120Hz is the global baseline and is never stored as an exception.

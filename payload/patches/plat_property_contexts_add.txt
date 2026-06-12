@@ -1,1 +1,2 @@
-zui_perfctl. u:object_r:shell_prop:s0
+persist.zui_control. u:object_r:shell_prop:s0
+zui_control. u:object_r:shell_prop:s0

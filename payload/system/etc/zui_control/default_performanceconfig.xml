@@ -1,0 +1,630 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PerformanceConfig model="Kirby-PRC" version="20241017">
+    <!-- 需要监控的状态节点定义。
+         状态节点文件目录不固定，需要通过扫描指定目录，根据标记文件内容，找到节点所在目录
+         name : 节点名称
+         rootpath : 节点搜索的根目录
+         statefilename : 状态节点文件名
+         typefilename : 标记类型的文件名
+         typevalue : 标记字符串
+         maxdeepth : 最大搜索子目录深度 -->
+    <StateFile name = "thermal.backthermal_zone"
+        rootpath = "/sys/class/thermal"
+        statefilename = "temp"
+        typefilename="type"
+        typevalue="user_front_temp"
+        maxdeepth="1">
+    </StateFile>
+    <StateFile name = "thermal.thermal_zone"
+        rootpath = "/sys/class/thermal"
+        statefilename = "temp"
+        typefilename="type"
+        typevalue="user_front_temp"
+        maxdeepth="1">
+    </StateFile>
+
+    <!--需要设置策略的节点定义。
+        default表示设备默认值，
+        optimize表示需要策略生效时写入的值-->
+    <NodeFile type = "mpctl"
+        name = "mpctl"
+        rootpath = "/sys/devices/system/cpu/cpu0/rq-stats"
+        default = "0">
+    </NodeFile>
+    <NodeFile type = "schctl"
+        name = "schctl"
+        rootpath = "/sys/devices/system/cpu/cpu0/rq-stats"
+        default = "000">
+    </NodeFile>
+    <NodeFile type = "governor"
+        name = "cpu0freq_governor"
+        rootpath = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+        default = "walt"
+        optimize = "performance">
+    </NodeFile>
+    <NodeFile type = "governor"
+        name = "cpu2freq_governor"
+        rootpath = "/sys/devices/system/cpu/cpu2/cpufreq/scaling_governor"
+        default = "walt"
+        optimize = "performance">
+    </NodeFile>
+    <NodeFile type = "governor"
+        name = "cpu5freq_governor"
+        rootpath = "/sys/devices/system/cpu/cpu5/cpufreq/scaling_governor"
+        default = "walt"
+        optimize = "performance">
+    </NodeFile>
+    <NodeFile type = "governor"
+        name = "cpu7freq_governor"
+        rootpath = "/sys/devices/system/cpu/cpu7/cpufreq/scaling_governor"
+        default = "walt"
+        optimize = "performance">
+    </NodeFile>
+
+    <!--NodeFile type = "memory"
+        name = "ddr_boost"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/DDR/boost_freq"
+        default = "547000"
+        optimize = "4224000">
+    </NodeFile>
+    <NodeFile type = "memory"
+        name = "ddr_soc:qcom,memlat:ddr:gold-compute"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/DDR/soc:qcom,memlat:ddr:gold-compute/min_freq"
+        default = "547000"
+        optimize = "2092000">
+    </NodeFile-->
+<!-- MPCTLV3_BUS_DCVS_DDR_GOLD_COMPUTE_MAX_FREQ 0x4346C000-->
+<!-- MPCTLV3_BUS_DCVS_DDR_LAT_MINFREQ_GOLD 0x43488000-->
+
+    <!--NodeFile type = "memory"
+        name = "ddr_soc:qcom,memlat:ddr:prime"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/DDR/soc:qcom,memlat:ddr:prime/min_freq"
+        default = "547000"
+        optimize = "4224000">
+    </NodeFile>
+    <NodeFile type = "memory"
+        name = "ddr_soc:qcom,memlat:ddr:prime-latfloor"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/DDR/soc:qcom,memlat:ddr:prime-latfloor/min_freq"
+        default = "547000"
+        optimize = "4224000">
+    </NodeFile>
+    <NodeFile type = "memory"
+        name = "ddr_soc:qcom,memlat:ddr:silver"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/DDR/soc:qcom,memlat:ddr:silver/min_freq"
+        default = "547000"
+        optimize = "1555000">
+    </NodeFile>
+    <NodeFile type = "memory"
+        name = "l3_boost"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/L3/boost_freq"
+        default = "364800"
+        optimize = "2035200">
+    </NodeFile>
+    <NodeFile type = "memory"
+        name = "l3_soc:qcom,memlat:l3:gold"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/L3/soc:qcom,memlat:l3:gold/min_freq"
+        default = "307200"
+        optimize = "2035200">
+    </NodeFile-->
+<!--MPCTLV3_BUS_DCVS_L3_MEMLAT_MIN_FREQ_GOLD 0x43480000-->
+    <!--NodeFile type = "memory"
+        name = "l3_soc:qcom,memlat:l3:silver"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/L3/soc:qcom,memlat:l3:silver/min_freq"
+        default = "307200"
+        optimize = "2035200">
+    </NodeFile>
+    <NodeFile type = "memory"
+        name = "l3_soc:qcom,memlat:l3:prime"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/L3/soc:qcom,memlat:l3:prime/min_freq"
+        default = "307200"
+        optimize = "2035200">
+    </NodeFile-->
+<!--MPCTLV3_BUS_DCVS_L3_MEMLAT_MIN_FREQ_PRIME 0x43458000-->
+    <!--NodeFile type = "memory"
+        name = "l3_soc:qcom,memlat:l3:prime-compute"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/L3/soc:qcom,memlat:l3:prime-compute/min_freq"
+        default = "307200"
+        optimize = "2035200">
+    </NodeFile>
+    <NodeFile type = "memory"
+        name = "llcc_boost"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/LLCC/boost_freq"
+        default = "300000"
+        optimize = "1066000">
+    </NodeFile>
+    <NodeFile type = "memory"
+        name = "llcc_240b7400.qcom,bwmon-llcc"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/LLCC/240b7400.qcom,bwmon-llcc/min_freq"
+        default = "300000"
+        optimize = "806000">
+    </NodeFile>
+    <NodeFile type = "memory"
+        name = "llcc_soc:qcom,memlat:llcc:gold"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/LLCC/soc:qcom,memlat:llcc:gold/min_freq"
+        default = "300000"
+        optimize = "1066000">
+    </NodeFile-->
+<!--MPCTLV3_BUS_DCVS_LLCC_MEMLAT_MIN_FREQ_GOLD 0x4348C000-->
+    <!--NodeFile type = "memory"
+        name = "llcc_soc:qcom,memlat:llcc:silver"
+        rootpath = " "
+        default = "300000"
+        optimize = "600000">
+    </NodeFile-->
+<!--MPCTLV3_BUS_DCVS_LLCC_MEMLAT_MIN_FREQ_SILVER 0x4345C000-->
+    <!--NodeFile type = "memory"
+        name = "llcc_soc:qcom,memlat:llcc:gold-compute"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/LLCC/soc:qcom,memlat:llcc:gold-compute/min_freq"
+        default = "300000"
+        optimize = "600000">
+    </NodeFile-->
+<!--MPCTLV3_BUS_DCVS_LLCC_GOLD_COMPUTE_MAX_FREQ 0x43470000-->
+    <!--NodeFile type = "memory"
+        name = "ubwcp_boost"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/UBWCP/boost_freq"
+        default = "547000"
+        optimize = "4224000">
+    </NodeFile>
+    <NodeFile type = "memory"
+        name = "ubwcp_240b5300.qcom,bwmon-ubwcp"
+        rootpath = "/sys/devices/system/cpu/bus_dcvs/UBWCP/240b5300.qcom,bwmon-ubwcp/min_freq"
+        default = "547000"
+        optimize = "710000">
+    </NodeFile-->
+
+    <AvailableCPUCoreMask>
+        <CoreMask value = "0x07" type = "LIGHT"/>
+        <CoreMask value = "0xf8" type = "HEAVY"/>
+    </AvailableCPUCoreMask>
+
+    <AvailableRefreshRateListForSettings>
+    <!-- old project, please contact zhaozh9 for patch -->
+    <!--RefreshRate value = "144" str = "144"/--><!-- 固定144Hz, 显示144Hz-->
+    <!--RefreshRate value = "120" str = "120"/--><!-- 固定120Hz, 显示120Hz-->
+    <!--RefreshRate value = "90" str = "90"/--><!-- 固定90Hz, 显示90Hz-->
+    <!--RefreshRate value = "60" str = "60"/--><!-- 固定60Hz, 显示60Hz-->
+    <!--RefreshRate value = "-1" str = "auto"/--><!-- 旧版智能刷新率, 显示智能刷新率-->
+
+    <!-- new project, no fixed refeshrate-->
+    <RefreshRate value = "120" str = "medium" show = "165"/><!-- 普通情况下 top 120, 显示智能高刷-->
+    <RefreshRate value = "144" str = "high" show = "165"/><!-- 普通情况下 top 144, 显示极致高刷-->
+    <RefreshRate value = "60" str = "low" show = "60"/><!-- 普通情况下 top 60，显示普通刷新率-->
+    </AvailableRefreshRateListForSettings>
+
+    <!-- settings below this rate, does not support high refresh -->
+    <SupportHighRefreshLowestRate>120</SupportHighRefreshLowestRate>
+    <!-- high refresh apps apply this refresh rate -->
+    <HighRefreshRateForUserSettingWhiteList>165</HighRefreshRateForUserSettingWhiteList>
+
+    <!-- when user set this for settings rate, some competitive games apply high refresh rate -->
+    <SupportHighRefreshGameSettingsRate>144</SupportHighRefreshGameSettingsRate>
+    <!-- some competitive games apply this rate when supportHignRefreshGameSettingsRate is on -->
+    <HighRefreshRateForCompetitiveGames>165</HighRefreshRateForCompetitiveGames>
+    <!-- white list of competitive games which apply high refresh rate -->
+    <CompetitiveGameList>
+        <Game pkg = "com.tencent.tmgp.pubgmhd"/><!--和平精英-->
+        <Game pkg = "com.miHoYo.Yuanshen"/><!--原神-->
+        <Game pkg = "com.tencent.jkchess"/><!--金铲铲之战-->
+        <Game pkg = "com.tencent.tmgp.sgame"/><!--王者荣耀-->
+        <Game pkg = "com.tencent.ig"/><!--PUBG Mobile-->
+        <Game pkg = "com.tencent.tmgp.cod"/><!--使命召唤-->
+        <Game pkg = "com.tencent.tmgp.gnyx"/><!--高能英雄-->
+        <Game pkg = "com.tencent.lolm"/><!--英雄联盟-->
+        <Game pkg = "com.tencent.tmgp.cf"/><!--穿越火线-->
+        <Game pkg = "XXXX"/><!--LOL-->
+    </CompetitiveGameList>
+
+    <AvailableRefreshRateList>
+        <RefreshRate value = "165"/>
+        <RefreshRate value = "144"/>
+        <RefreshRate value = "90"/>
+        <RefreshRate value = "120"/>
+        <RefreshRate value = "60"/>
+    </AvailableRefreshRateList>
+
+    <PowerSaveLowRefreshRate>30</PowerSaveLowRefreshRate>
+
+    <PerformanceTypeList>
+        <Item name = "Full">
+            <PerfLockConfig code = "0x40800100" param = "2265600"/><!--minLittleCore-->
+            <PerfLockConfig code = "0x40800000" param = "3148800"/><!--minBigCore-->
+            <PerfLockConfig code = "0x40800300" param = "2956800"/><!--minTitanCore-->
+            <PerfLockConfig code = "0x40800200" param = "3302400"/><!--minMegaCore-->
+            <PerfLockConfig code = "0x4280C000" param = "903000"/><!--minGPUFreq-->
+            <PerfLockConfig code = "0x42804000" param = "0"/><!--minPowerLevel-->
+
+            <PerfLockConfig code = "0x43458000" param = "2035200"/><!--MPCTLV3_BUS_DCVS_L3_MEMLAT_MIN_FREQ_PRIME-->
+            <PerfLockConfig code = "0x43480000" param = "2035200"/><!--MPCTLV3_BUS_DCVS_L3_MEMLAT_MIN_FREQ_GOLD-->
+            <PerfLockConfig code = "0x4346C000" param = "2092000"/><!--MPCTLV3_BUS_DCVS_DDR_GOLD_COMPUTE_MAX_FREQ-->
+
+            <PerfLockConfig code = "0x4345C000" param = "600000"/><!--MPCTLV3_BUS_DCVS_LLCC_MEMLAT_MIN_FREQ_SILVER-->
+            <PerfLockConfig code = "0x4348C000" param = "1066000"/><!--MPCTLV3_BUS_DCVS_LLCC_MEMLAT_MIN_FREQ_GOLD-->
+            <!--PerfLockConfig code = "0x43460000" param = "1066000"/--><!--MPCTLV3_BUS_DCVS_LLCC_DDR_LAT_MINFREQ_SILVER-->
+            <!--PerfLockConfig code = "0x43484000" param = "1066000"/--><!--MPCTLV3_BUS_DCVS_LLCC_DDR_LAT_MINFREQ_PRIME-->
+
+            <PerfLockConfig code = "0x43488000" param = "2092000"/><!--MPCTLV3_BUS_DCVS_DDR_LAT_MINFREQ_GOLD-->
+            <PerfLockConfig code = "0x43470000" param = "600000"/> <!--MPCTLV3_BUS_DCVS_LLCC_GOLD_COMPUTE_MAX_FREQ-->
+            <!--PerfLockConfig code = "0x43448000" param = "806000"/--><!--MPCTLV3_CPU_CPU_DDR_LATFLOOR_MINFREQ-->
+
+            <PerfLockConfig code = "0x40C00000" param = "1"/><!--SCHEDBOOST(cgroup boost)-->
+            <PerfLockConfig code = "0x40CAC000" param = "100"/><!--MPCTLV3_SCHED_UCLAMP_BOOST -->
+            <!--/dev/cpuctl/topapp/cpu.uclamp.min-->
+            <!--PerfLockConfig code = "0x40CB0000" param = "TASK_BOOST_STRICT_MAX"/--><!--MPCTLV3_SCHED_ENABLE_TASK_BOOST_RENDERTHREAD-->
+            <!-- /proc/%d/sched_boost-->
+            <!--PerfLockConfig code = "0x40C84000" param = "1000"/--><!--sched_user_hint-->
+            <!-- /proc/sys/kernel/sched_user_hint -->
+        </Item>
+        <Item name = "LowPower">
+            <PerfLockConfig code = "0x40804100" param = "1459200"/><!--maxLittleCore-->
+            <PerfLockConfig code = "0x40804000" param = "1497600"/><!--maxBigCore-->
+            <PerfLockConfig code = "0x40804300" param = "1497600"/><!--maxTitanCore-->
+            <PerfLockConfig code = "0x40804200" param = "1478400"/><!--maxMegaCore-->
+        </Item>
+        <Item name = "CPUTest">
+            <PerfLockConfig code = "0x40800100" param = "2265600"/><!--minLittleCore-->
+            <PerfLockConfig code = "0x40800000" param = "3148800"/><!--minBigCore-->
+            <PerfLockConfig code = "0x40800300" param = "2956800"/><!--minTitanCore-->
+            <PerfLockConfig code = "0x40800200" param = "3302400"/><!--minMegaCore-->
+
+            <PerfLockConfig code = "0x43458000" param = "2035200"/><!--MPCTLV3_BUS_DCVS_L3_MEMLAT_MIN_FREQ_PRIME-->
+            <PerfLockConfig code = "0x43480000" param = "2035200"/><!--MPCTLV3_BUS_DCVS_L3_MEMLAT_MIN_FREQ_GOLD-->
+            <PerfLockConfig code = "0x4346C000" param = "2092000"/><!--MPCTLV3_BUS_DCVS_DDR_GOLD_COMPUTE_MAX_FREQ-->
+
+            <PerfLockConfig code = "0x4345C000" param = "600000"/><!--MPCTLV3_BUS_DCVS_LLCC_MEMLAT_MIN_FREQ_SILVER-->
+            <PerfLockConfig code = "0x4348C000" param = "1066000"/><!--MPCTLV3_BUS_DCVS_LLCC_MEMLAT_MIN_FREQ_GOLD-->
+            <!--PerfLockConfig code = "0x43460000" param = "1066000"/--><!--MPCTLV3_BUS_DCVS_LLCC_DDR_LAT_MINFREQ_SILVER-->
+            <!--PerfLockConfig code = "0x43484000" param = "1066000"/--><!--MPCTLV3_BUS_DCVS_LLCC_DDR_LAT_MINFREQ_PRIME-->
+
+            <PerfLockConfig code = "0x43488000" param = "2092000"/><!--MPCTLV3_BUS_DCVS_DDR_LAT_MINFREQ_GOLD-->
+            <PerfLockConfig code = "0x43470000" param = "600000"/> <!--MPCTLV3_BUS_DCVS_LLCC_GOLD_COMPUTE_MAX_FREQ-->
+            <!--PerfLockConfig code = "0x43448000" param = "806000"/--><!--MPCTLV3_CPU_CPU_DDR_LATFLOOR_MINFREQ-->
+
+            <PerfLockConfig code = "0x40C00000" param = "1"/><!--SCHEDBOOST(cgroup boost)-->
+            <PerfLockConfig code = "0x40CAC000" param = "100"/><!--MPCTLV3_SCHED_UCLAMP_BOOST -->
+            <!--/dev/cpuctl/topapp/cpu.uclamp.min-->
+            <!--PerfLockConfig code = "0x40CB0000" param = "TASK_BOOST_STRICT_MAX"/--><!--MPCTLV3_SCHED_ENABLE_TASK_BOOST_RENDERTHREAD-->
+            <!-- /proc/%d/sched_boost-->
+            <!--PerfLockConfig code = "0x40C84000" param = "1000"/--><!--sched_user_hint-->
+            <!-- /proc/sys/kernel/sched_user_hint -->
+        </Item>
+        <Item name = "GPUTest">
+            <PerfLockConfig code = "0x4280C000" param = "903000"/><!--minGPUFreq-->
+            <PerfLockConfig code = "0x42804000" param = "0"/><!--minPowerLevel-->
+
+            <PerfLockConfig code = "0x40C00000" param = "0"/><!--SCHEDBOOST(cgroup boost)-->
+            <!--/dev/cpuctl/topapp/cpu.uclamp.min-->
+            <!--PerfLockConfig code = "0x40CB0000" param = "TASK_BOOST_STRICT_MAX"/--><!--MPCTLV3_SCHED_ENABLE_TASK_BOOST_RENDERTHREAD-->
+            <!-- /proc/%d/sched_boost-->
+            <!--PerfLockConfig code = "0x40C84000" param = "1000"/--><!--sched_user_hint-->
+            <!-- /proc/sys/kernel/sched_user_hint -->
+        </Item>
+    </PerformanceTypeList>
+
+    <PerformanceSpecialList>
+        <Item name = "SavageBoost">
+            <PerfLockConfig code = "0x40CAC000" param = "100"/><!--schedboost-->
+        </Item>
+        <Item name = "SavageBoostV1">
+            <PerfLockConfig code = "0x40CAC000" param = "100"/><!--schedboost-->
+        </Item>
+        <Item name = "SavageBoostV2">
+            <PerfLockConfig code = "0x40CAC000" param = "100"/><!--schedboost-->
+        </Item>
+        <Item name = "GameBoost">
+            <PerfLockConfig code = "0x40CAC000" param = "50"/><!--schedboost-->
+        </Item>
+        <Item name = "GameBoostV1">
+            <PerfLockConfig code = "0x40CAC000" param = "50"/><!--schedboost-->
+        </Item>
+        <Item name = "GameBoostV2">
+            <PerfLockConfig code = "0x40CAC000" param = "50"/><!--schedboost-->
+        </Item>
+    </PerformanceSpecialList>
+
+    <!-- available freq -->
+    <!-- little cpu0 ~ cpu2 :  364800 460800 556800 672000 787200 902400 1017600 1132800 1248000 1344000 1459200 1574400 1689600 1804800 1920000 2035200 2150400 2265600 -->
+    <!-- big    cpu3 ~ cpu4 :         499200 614400 729600 844800 960000 1075200 1190400 1286400 1401600 1497600 1612800 1708800 1824000 1920000 2035200 2131200 2188800 2246400 2323200 2380800 2438400 2515200 2572800 2630400 2707200 2764800 2841600 2899200 2956800 3014400 3072000 3148800 -->
+    <!-- titan  cpu5 ~ cpu6 :         499200 614400 729600 844800 960000 1075200 1190400 1286400 1401600 1497600 1612800 1708800 1824000 1920000 2035200 2131200 2188800 2246400 2323200 2380800 2438400 2515200 2572800 2630400 2707200 2764800 2841600 2899200 2956800 -->
+    <!-- mega    cpu7       :         480000 576000 672000 787200 902400 1017600 1132800 1248000 1363200 1478400 1593600 1708800 1824000 1939200 2035200 2112000 2169600 2246400 2304000 2380800 2438400 2496000 2553600 2630400 2688000 2745600 2803200 2880000 2937600 2995200 3052800 begin boost 3110400 3187200 3244800 3302400 -->
+
+    <!-- available freq -->
+    <!-- gpu : 903000 834000 770000 720000 680000 629000 578000 500000 422000 366000 310000 231000 -->
+
+    <GameLimitConfig>
+        <Type name = "TempLevel">
+            <Temp level ="-1000">default</Temp>
+            <!-- Othergame DefaultMode yhy -->
+            <Temp level ="-1001">38</Temp>
+            <Temp level ="-1002">47</Temp>
+            <!-- Othergame PowerSaveMode yhy -->
+            <Temp level ="-1004">36</Temp>
+            <Temp level ="-1005">44</Temp>
+            <!-- Othergame SavageMode yhy -->
+            <Temp level ="-1007">42</Temp>
+            <Temp level ="-1008">48</Temp>
+            <!-- Game level for yhy -->
+            <Temp level = "1">35</Temp>
+            <Temp level = "2">36</Temp>
+            <Temp level = "3">37</Temp>
+            <Temp level = "4">38</Temp>
+            <Temp level = "5">39</Temp>
+            <Temp level = "6">40</Temp>
+            <Temp level = "7">41</Temp>
+            <Temp level = "8">42</Temp>
+            <Temp level = "9">43</Temp>
+            <Temp level = "10">44</Temp>
+            <Temp level = "11">45</Temp>
+            <Temp level = "12">46</Temp>
+            <Temp level = "13">47</Temp>
+            <Temp level = "14">48</Temp>
+            <Temp level = "15">49</Temp>
+            <Temp level = "16">50</Temp>
+
+            <!-- 48 + 4 -> 52  -->
+            <!--
+            <Temp level = "1">39</Temp>
+            <Temp level = "2">40</Temp>
+            <Temp level = "3">41</Temp>
+            <Temp level = "4">42</Temp>
+            <Temp level = "5">43</Temp>
+            <Temp level = "6">44</Temp>
+            <Temp level = "7">45</Temp>
+            <Temp level = "8">46</Temp>
+            <Temp level = "9">47</Temp>
+            <Temp level = "10">48</Temp>
+            <Temp level = "11">49</Temp>
+            <Temp level = "12">50</Temp>
+            <Temp level = "13">51</Temp>
+            <Temp level = "14">52</Temp>
+            <Temp level = "15">53</Temp>
+            <Temp level = "16">54</Temp>
+            -->
+
+            <!-- 48 + 7 -> 55  -->
+            <!--
+            <Temp level = "1">42</Temp>
+            <Temp level = "2">43</Temp>
+            <Temp level = "3">44</Temp>
+            <Temp level = "4">45</Temp>
+            <Temp level = "5">46</Temp>
+            <Temp level = "6">47</Temp>
+            <Temp level = "7">48</Temp>
+            <Temp level = "8">49</Temp>
+            <Temp level = "9">50</Temp>
+            <Temp level = "10">51</Temp>
+            <Temp level = "11">52</Temp>
+            <Temp level = "12">53</Temp>
+            <Temp level = "13">54</Temp>
+            <Temp level = "14">55</Temp>
+            <Temp level = "15">56</Temp>
+            <Temp level = "16">57</Temp>
+            -->
+        </Type>
+        <Type name = "LittleCore">
+            <!-- device/default levels preserved from official config -->
+            <Freq level = "0">-1_-1_-1</Freq>
+            <Freq level = "-1001">1459200_460800_-1</Freq>
+            <Freq level = "-1002">1459200_460800_-1</Freq>
+            <Freq level = "-1003">1017600_460800_-1</Freq>
+            <Freq level = "-1004">787200_364800_-1</Freq>
+            <Freq level = "-1005">787200_364800_-1</Freq>
+            <Freq level = "-1006">364800_364800_-1</Freq>
+            <Freq level = "-1007">2265600_556800_-1</Freq>
+            <Freq level = "-1008">2265600_556800_-1</Freq>
+            <Freq level = "-1009">1804800_460800_-1</Freq>
+            <!-- ZuiControl unified levels: level = lowIndex * 100 + highIndex, 1-based -->
+            <Freq level = "105">787200_364800_-1</Freq>
+            <Freq level = "107">1017600_364800_-1</Freq>
+            <Freq level = "108">1132800_364800_-1</Freq>
+            <Freq level = "113">1689600_364800_-1</Freq>
+            <Freq level = "115">1920000_364800_-1</Freq>
+            <Freq level = "309">1248000_556800_-1</Freq>
+            <Freq level = "311">1459200_556800_-1</Freq>
+            <Freq level = "410">1344000_672000_-1</Freq>
+            <Freq level = "411">1459200_672000_-1</Freq>
+            <Freq level = "412">1574400_672000_-1</Freq>
+            <Freq level = "513">1689600_787200_-1</Freq>
+            <Freq level = "514">1804800_787200_-1</Freq>
+            <Freq level = "712">1574400_1017600_-1</Freq>
+            <Freq level = "715">1920000_1017600_-1</Freq>
+            <Freq level = "718">2265600_1017600_-1</Freq>
+            <Freq level = "815">1920000_1132800_-1</Freq>
+            <Freq level = "915">1920000_1248000_-1</Freq>
+            <Freq level = "1415">1920000_1804800_-1</Freq>
+            <Freq level = "1518">2265600_1920000_-1</Freq>
+        </Type>
+        <Type name = "BigCore">
+            <!-- device/default levels preserved from official config -->
+            <Freq level = "0">-1_-1_-1</Freq>
+            <Freq level = "-1001">2572800_614400_-1</Freq>
+            <Freq level = "-1002">2572800_614400_-1</Freq>
+            <Freq level = "-1003">1286400_499200_-1</Freq>
+            <Freq level = "-1004">1286400_499200_-1</Freq>
+            <Freq level = "-1005">1286400_499200_-1</Freq>
+            <Freq level = "-1006">1075200_499200_-1</Freq>
+            <Freq level = "-1007">3148800_729600_-1</Freq>
+            <Freq level = "-1008">3148800_729600_-1</Freq>
+            <Freq level = "-1009">1286400_499200_-1</Freq>
+            <!-- ZuiControl unified levels: level = lowIndex * 100 + highIndex, 1-based -->
+            <Freq level = "103">729600_499200_-1</Freq>
+            <Freq level = "104">844800_499200_-1</Freq>
+            <Freq level = "105">960000_499200_-1</Freq>
+            <Freq level = "106">1075200_499200_-1</Freq>
+            <Freq level = "108">1286400_499200_-1</Freq>
+            <Freq level = "113">1824000_499200_-1</Freq>
+            <Freq level = "120">2380800_499200_-1</Freq>
+            <Freq level = "124">2630400_499200_-1</Freq>
+            <Freq level = "218">2246400_614400_-1</Freq>
+            <Freq level = "311">1612800_729600_-1</Freq>
+            <Freq level = "321">2438400_729600_-1</Freq>
+            <Freq level = "614">1920000_1075200_-1</Freq>
+            <Freq level = "926">2764800_1401600_-1</Freq>
+            <Freq level = "927">2841600_1401600_-1</Freq>
+            <Freq level = "932">3148800_1401600_-1</Freq>
+            <Freq level = "1028">2899200_1497600_-1</Freq>
+            <Freq level = "1332">3148800_1824000_-1</Freq>
+            <Freq level = "1424">2630400_1920000_-1</Freq>
+        </Type>
+        <Type name = "TitanCore">
+            <!-- device/default levels preserved from official config -->
+            <Freq level = "0">-1_-1_-1</Freq>
+            <Freq level = "-1001">2515200_614400_-1</Freq>
+            <Freq level = "-1002">2515200_614400_-1</Freq>
+            <Freq level = "-1003">1286400_499200_-1</Freq>
+            <Freq level = "-1004">1075200_499200_-1</Freq>
+            <Freq level = "-1005">1075200_499200_-1</Freq>
+            <Freq level = "-1006">614400_499200_-1</Freq>
+            <Freq level = "-1007">2956800_729600_-1</Freq>
+            <Freq level = "-1008">2956800_729600_-1</Freq>
+            <Freq level = "-1009">1286400_499200_-1</Freq>
+            <!-- ZuiControl unified levels: level = lowIndex * 100 + highIndex, 1-based -->
+            <Freq level = "104">844800_499200_-1</Freq>
+            <Freq level = "105">960000_499200_-1</Freq>
+            <Freq level = "107">1190400_499200_-1</Freq>
+            <Freq level = "108">1286400_499200_-1</Freq>
+            <Freq level = "110">1497600_499200_-1</Freq>
+            <Freq level = "111">1612800_499200_-1</Freq>
+            <Freq level = "113">1824000_499200_-1</Freq>
+            <Freq level = "213">1824000_614400_-1</Freq>
+            <Freq level = "215">2035200_614400_-1</Freq>
+            <Freq level = "312">1708800_729600_-1</Freq>
+            <Freq level = "317">2188800_729600_-1</Freq>
+            <Freq level = "515">2035200_960000_-1</Freq>
+            <Freq level = "529">2956800_960000_-1</Freq>
+            <Freq level = "729">2956800_1190400_-1</Freq>
+            <Freq level = "823">2572800_1286400_-1</Freq>
+            <Freq level = "924">2630400_1401600_-1</Freq>
+            <Freq level = "1025">2707200_1497600_-1</Freq>
+        </Type>
+        <Type name = "MegaCore">
+            <!-- device/default levels preserved from official config -->
+            <Freq level = "0">-1_-1_-1</Freq>
+            <Freq level = "-1001">2553600_576000_-1</Freq>
+            <Freq level = "-1002">2553600_576000_-1</Freq>
+            <Freq level = "-1003">1132800_480000_-1</Freq>
+            <Freq level = "-1004">1248000_480000_-1</Freq>
+            <Freq level = "-1005">1248000_480000_-1</Freq>
+            <Freq level = "-1006">787200_480000_-1</Freq>
+            <Freq level = "-1007">-1_787200_-1</Freq>
+            <Freq level = "-1008">-1_787200_-1</Freq>
+            <Freq level = "-1009">1132800_576000_-1</Freq>
+            <!-- ZuiControl unified levels: level = lowIndex * 100 + highIndex, 1-based -->
+            <Freq level = "104">787200_480000_-1</Freq>
+            <Freq level = "106">1017600_480000_-1</Freq>
+            <Freq level = "107">1132800_480000_-1</Freq>
+            <Freq level = "110">1478400_480000_-1</Freq>
+            <Freq level = "112">1708800_480000_-1</Freq>
+            <Freq level = "114">1939200_480000_-1</Freq>
+            <Freq level = "315">2035200_672000_-1</Freq>
+            <Freq level = "418">2246400_787200_-1</Freq>
+            <Freq level = "525">2688000_902400_-1</Freq>
+            <Freq level = "619">2304000_1017600_-1</Freq>
+            <Freq level = "929">2937600_1363200_-1</Freq>
+            <Freq level = "1030">2995200_1478400_-1</Freq>
+            <Freq level = "1135">3302400_1593600_-1</Freq>
+            <Freq level = "1235">3302400_1708800_-1</Freq>
+            <Freq level = "2731">3052800_2803200_-1</Freq>
+            <Freq level = "2735">3302400_2803200_-1</Freq>
+        </Type>
+        <Type name = "GPU">
+            <!-- device/default levels preserved from official config -->
+            <Freq level = "0">-1_-1_-1</Freq>
+            <Freq level = "-1001">5_6_-1</Freq>
+            <Freq level = "-1002">5_6_-1</Freq>
+            <Freq level = "-1003">10_11_-1</Freq>
+            <Freq level = "-1004">9_11_-1</Freq>
+            <Freq level = "-1005">9_11_-1</Freq>
+            <Freq level = "-1006">11_11_-1</Freq>
+            <Freq level = "-1007">0_5_-1</Freq>
+            <Freq level = "-1008">0_5_-1</Freq>
+            <Freq level = "-1009">4_6_-1</Freq>
+            <!-- ZuiControl unified levels: level = lowIndex * 100 + highIndex, 1-based -->
+            <Freq level = "601">0_5_-1</Freq>
+            <Freq level = "704">3_6_-1</Freq>
+            <Freq level = "901">0_8_-1</Freq>
+            <Freq level = "1004">3_9_-1</Freq>
+            <Freq level = "1006">5_9_-1</Freq>
+            <Freq level = "1007">6_9_-1</Freq>
+            <Freq level = "1008">7_9_-1</Freq>
+            <Freq level = "1105">4_10_-1</Freq>
+            <Freq level = "1107">6_10_-1</Freq>
+            <Freq level = "1108">7_10_-1</Freq>
+            <Freq level = "1206">5_11_-1</Freq>
+            <Freq level = "1207">6_11_-1</Freq>
+            <Freq level = "1208">7_11_-1</Freq>
+            <Freq level = "1209">8_11_-1</Freq>
+            <Freq level = "1210">9_11_-1</Freq>
+        </Type>
+    </GameLimitConfig>
+
+    <ThermalConfigMode>4</ThermalConfigMode> <!--1 for perflock, 2 for mpctl former devices, 3 for thermal engine, 4 for HIDL-->
+    <ThermalPerfLockCode>0x03000000</ThermalPerfLockCode><!-- if ThermalConfigMode == 1, ensure this is initialized-->
+
+    <RefreshRateDefault>120</RefreshRateDefault>
+
+    <LowRefreshRate>60</LowRefreshRate>
+
+    <HighRefreshRate>120</HighRefreshRate>
+
+    <InnerRefreshRateEnabled>True</InnerRefreshRateEnabled>
+
+    <RefreshRateSettingsDefault>120</RefreshRateSettingsDefault>
+
+    <LowRefreshApps>
+    </LowRefreshApps>
+
+    <TargetGameApps>
+    </TargetGameApps>
+
+    <AppConfig>
+        <BindCoreItem name = "Yuanshen">
+            <pCommValue>Yuanshen,toStch</pCommValue>
+            <tCommValue>Worker Thread</tCommValue>
+            <delayMillis>5</delayMillis>
+            <mask>f8</mask>
+            <loopFrameCount>0</loopFrameCount>
+        </BindCoreItem>
+        <BindCoreItem name = "LuDaShi">
+            <pCommValue>shi.benchmark2</pCommValue>
+            <tCommValue>benchmark2,Render Thread</tCommValue>
+            <delayMillis>300</delayMillis>
+            <mask>07</mask>
+            <loopFrameCount>0</loopFrameCount>
+        </BindCoreItem>
+        <BindCoreItem name = "pubg">
+            <pCommValue>MainThread-UE4,tmgp.pubg</pCommValue>
+            <tCommValue>MainThread-UE4,TaskGraphNP,PoolThread,FAsyncLoading,RenderThread</tCommValue>
+            <delayMillis>8000</delayMillis>
+            <mask>f8</mask>
+            <loopFrameCount>0</loopFrameCount>
+        </BindCoreItem>
+        <BindCoreItem name = "UnityMain">
+            <pCommValue>UnityMain</pCommValue>
+            <tCommValue>Worker Thread,Job Worker</tCommValue>
+            <delayMillis>8000</delayMillis>
+            <mask>f8</mask>
+            <loopFrameCount>0</loopFrameCount>
+        </BindCoreItem>
+        <BindCoreItem name = "HuYa">
+            <pCommValue>duawan kiwi</pCommValue>
+            <tCommValue>[HY] HYMedia,KT RxComputa</tCommValue>
+            <delayMillis>10000</delayMillis>
+            <mask>07</mask>
+            <loopFrameCount>1000</loopFrameCount>
+        </BindCoreItem>
+        <BindCoreItem name = "DouYin">
+            <pCommValue>ugc.aweme</pCommValue>
+            <tCommValue>pop view thread,Render Thread</tCommValue>
+            <delayMillis>10000</delayMillis>
+            <mask>07</mask>
+            <loopFrameCount>1000</loopFrameCount>
+        </BindCoreItem>
+        <BindCoreItem name = "JkChess">
+            <pCommValue>jkchess</pCommValue>
+            <tCommValue>Job Worker, UnityMain</tCommValue>
+            <delayMillis>5</delayMillis>
+            <mask>f8</mask>
+            <loopFrameCount>0</loopFrameCount>
+        </BindCoreItem>
+    </AppConfig>
+</PerformanceConfig>

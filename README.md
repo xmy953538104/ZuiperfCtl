@@ -1,32 +1,46 @@
-# ZuiperfCtl
+# ZuiControl
 
-ZuiperfCtl is a system app and init daemon prototype for ZUI performance control.
+ZuiControl is the v19 system-server refresh-rate and performance control plane.
 
-It keeps the official ZuiPP and game helper packages installed, then adds:
+The app is now a privileged UI/QS/config client. Foreground scene detection and
+refresh-rate policy live in `system_server` through the `zui_control` Binder
+service. The daemon remains for XML generation, bind mounts, GPU/root nodes,
+SafeCenter one-time keepalive, logs, and AsoulOpt orchestration.
 
-- `com.zui.zuiperfctl`: privileged Android app UI. The Kotlin source package is still `com.zui.perfctl`, but the APK package name is new to avoid the old signature-mismatch state on flashed devices.
-- `PerfCtlQuickService`: ongoing notification with direct 60/90/120/144Hz controls.
-- `/system/bin/zui_perfctld`: root init daemon for XML generation/bind mounts and foreground refresh-rate learning.
-- Embedded `AsoulOpt` service copied from the known working 187 payload.
-- Runtime config under `/data/local/tmp/zui_perfctl`.
+## Runtime Split
+
+- `com.zui.zuicontrol`: privileged Android app UI and quick notification.
+- `android.zui.ZuiControlManager`: thin framework client used by the app.
+- `zui_control`: Binder service published from `system_server`.
+- `ZuiControlService`: service-side display-mode policy owner.
+- `/system/bin/zui_controld`: root daemon for XML/GPU/asoul/log work only.
+- `/data/system/zui_control/profiles.prop`: refresh scene profiles.
+- `/data/vendor/zui_control/`: daemon runtime state, XML work files, and logs.
+
+Refresh-rate ownership is intentionally not shared: notification clicks call
+`zui_control`; the daemon does not learn refresh rules, restore 120Hz, or write
+`peak_refresh_rate` / `min_refresh_rate`.
 
 ## Layout
 
 - `app/`: Android app source.
+- `framework-stubs/`: compile-only `android.zui` API for the app build.
+- `framework_patch/`: Java sources and stubs injected into framework/services jars.
 - `payload/`: files to inject into `system_a/system`.
-- `scripts/BuildZuiperfCtl.ps1`: local Windows build helper.
-- `scripts/ApplyZuiperfCtlPayload.py`: copies payload into an unpacked image tree and updates metadata.
-- `.github/workflows/build.yml`: GitHub Actions build and script checks.
-- `docs/`: design and first-version implementation notes.
+- `scripts/BuildZuiControl.ps1`: local Windows build helper.
+- `scripts/ApplyZuiControlPayload.py`: copies payload, patches SELinux metadata,
+  and invokes the framework/services jar patcher.
+- `scripts/PatchZuiControlFramework.py`: injects `android.zui.ZuiControlManager`,
+  `ZuiControlService`, and the WM focus hook.
 
 ## CI
 
-Run the `Build ZuiperfCtl` workflow manually. It will:
+Run the `Build ZuiControl` workflow manually. It will:
 
 1. Check Python and shell scripts.
 2. Decode the release keystore from GitHub Actions secrets.
 3. Build signed `app-release.apk`.
-4. Stage it into `payload/system/priv-app/ZuiperfCtl/ZuiperfCtl.apk`.
+4. Stage it into `payload/system/priv-app/ZuiControl/ZuiControl.apk`.
 5. Upload both the APK and staged payload as artifacts.
 
 Required repository secrets:
@@ -38,31 +52,26 @@ Required repository secrets:
 
 ## Payload Usage
 
-After the APK exists in `payload/system/priv-app/ZuiperfCtl/ZuiperfCtl.apk`, apply the payload to an unpacked image tree:
+After the APK exists in `payload/system/priv-app/ZuiControl/ZuiControl.apk`,
+apply the payload to an unpacked image tree:
 
 ```bash
-python scripts/ApplyZuiperfCtlPayload.py --unpack /path/to/work/unpack
+python scripts/ApplyZuiControlPayload.py --unpack /path/to/work/unpack
 ```
 
 Runtime logs on device:
 
-- `/data/local/tmp/zui_perfctl/log/perfctld.log`
-- `/data/local/tmp/zui_perfctl/log/asoulopt.log`
+- `/data/vendor/zui_control/log/zuicontrold.log`
+- `/data/vendor/zui_control/log/asoulopt.log`
 
-## Notes
+## Validation Anchors
 
-The app sends each command as one atomic `Settings.System` payload in
-`zui_perfctl_request_text`. Refresh-rate exceptions are learned when a rate is
-selected from the notification while an app is in the foreground. The global
-baseline is a hard 120Hz lock, and selecting 120Hz removes that app's exception.
+- `service list | grep zui_control`
+- `dumpsys activity service zui_control` or `dumpsys zui_control` if available
+- `settings get system zui_control_top_package`
+- `settings get system zui_control_active_refresh`
+- `dumpsys display` active mode versus the selected scene profile
+- `logcat -b all | grep -i ZuiControl`
 
-Performance profiles are independent from refresh-rate rules and are persisted
-under `/data/local/tmp/zui_perfctl/performance/profiles.prop`. Each profile
-contains a ZuiPP mode plus CPU/GPU upper and lower limits. The APK's
-`XmlProfileGenerator` converts these profiles into valid `game_policy.xml` and
-`performanceconfig.xml` work files before the daemon applies them.
-
-AsoulOpt is not configured per app. It remains an independent system service;
-the app reports its service/domain health and exports its log.
-
-XML bind mounts are requested by the daemon through `zui_perfctl.*` properties and executed by Android init. `scripts/ApplyZuiperfCtlPayload.py` adds the matching property context and the minimal init `mounton` SELinux rule, then updates the platform sepolicy hash so the device recompiles split sepolicy at boot.
+The expected steady state is `refreshOwner=system_server` and
+`daemonRefreshDisabled=true`.
