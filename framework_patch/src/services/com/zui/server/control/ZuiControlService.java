@@ -356,11 +356,16 @@ public final class ZuiControlService extends Binder {
     private int syncPeakRefreshRate(int targetHz) {
         int peakHz = targetHz > 120 ? targetHz : 120;
         String desired = peakHz + ".0";
-        String current = Settings.System.getString(mContext.getContentResolver(),
-                SETTING_PEAK_REFRESH_RATE);
-        if (!desired.equals(current)) {
-            Settings.System.putString(mContext.getContentResolver(),
-                    SETTING_PEAK_REFRESH_RATE, desired);
+        long token = Binder.clearCallingIdentity();
+        try {
+            String current = Settings.System.getString(mContext.getContentResolver(),
+                    SETTING_PEAK_REFRESH_RATE);
+            if (!desired.equals(current)) {
+                Settings.System.putString(mContext.getContentResolver(),
+                        SETTING_PEAK_REFRESH_RATE, desired);
+            }
+        } finally {
+            Binder.restoreCallingIdentity(token);
         }
         mLastSyncedPeakHz = peakHz;
         return peakHz;
@@ -571,6 +576,7 @@ public final class ZuiControlService extends Binder {
     }
 
     private void publishState() {
+        long token = Binder.clearCallingIdentity();
         try {
             Settings.System.putString(mContext.getContentResolver(),
                     "zui_control_top_package", mCurrentScenePackage);
@@ -582,6 +588,8 @@ public final class ZuiControlService extends Binder {
             Settings.System.putString(mContext.getContentResolver(),
                     "zui_control_status_text", state());
         } catch (Throwable ignored) {
+        } finally {
+            Binder.restoreCallingIdentity(token);
         }
     }
 
