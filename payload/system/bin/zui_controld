@@ -298,7 +298,7 @@ prepare_xml_replace_target() {
     file="$1"
     [ -e "$file" ] || return 0
     chmod 0664 "$file" >/dev/null 2>&1 || true
-    chcon u:object_r:shell_data_file:s0 "$file" >/dev/null 2>&1 || true
+    restorecon "$file" >/dev/null 2>&1 || true
 }
 
 copy_xml_pair_to_dir() {
@@ -758,6 +758,7 @@ init_dirs() {
         "$ZUI_BAKED_DIR" "$ZUI_ACTIVE_DIR" "$ZUI_STAGING_DIR" \
         "$ZUI_LAST_GOOD_DIR" "$ZUI_STATE_DIR" "$ZUI_OFFICIAL_DIR" \
         "$ASOUL_DIR" "$REFRESH_DIR" "$PERFORMANCE_DIR" "$LOG_DIR" 2>/dev/null
+    restorecon_recursive "$DATA_ROOT" >/dev/null 2>&1 || true
     init_active_xml || log_line "ZuiPP XML init failed"
     copy_if_missing "$DEFAULT_ASOPT" "$WORK_ASOPT"
     [ -e "$REFRESH_RULES" ] || : > "$REFRESH_RULES"

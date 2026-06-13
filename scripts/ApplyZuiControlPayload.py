@@ -419,6 +419,8 @@ def patch_plat_sepolicy(unpack, payload, dry_run, report):
         "(allow shell self (capability (kill)))",
         "(allow shell system_app (process (signal sigkill)))",
         "(allow shell platform_app (process (signal sigkill)))",
+        "(allow init shell_data_file (dir (getattr open read search write add_name remove_name)))",
+        "(allow init shell_data_file (file (getattr open read write create unlink setattr relabelfrom)))",
     ]
     removed = remove_lines_containing(target, obsolete, dry_run)
     patch_lines = read_patch_lines(patch)
