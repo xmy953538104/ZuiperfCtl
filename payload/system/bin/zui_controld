@@ -264,6 +264,7 @@ write_active_sha() {
 label_active_xml() {
     for file in "$ACTIVE_GAME_POLICY" "$ACTIVE_PERF_CONFIG"; do
         [ -e "$file" ] || continue
+        chown root:root "$file" >/dev/null 2>&1 || true
         current_context="$(ls -Z "$file" 2>/dev/null | awk '{print $1}')"
         if [ "$current_context" != "u:object_r:system_file:s0" ]; then
             chcon u:object_r:system_file:s0 "$file" >/dev/null 2>&1 ||
@@ -276,12 +277,28 @@ label_active_xml() {
     done
 }
 
+label_bound_system_xml() {
+    for file in "$SYSTEM_GAME_POLICY" "$SYSTEM_PERF_CONFIG"; do
+        [ -e "$file" ] || continue
+        chown root:root "$file" >/dev/null 2>&1 || true
+        restorecon "$file" >/dev/null 2>&1 || true
+        chmod 0664 "$file" >/dev/null 2>&1 || true
+    done
+}
+
 copy_xml_file() {
     src="$1"
     dst="$2"
     [ -s "$src" ] || return 1
     mkdir -p "$(dirname "$dst")"
     cp "$src" "$dst" && chmod 0664 "$dst"
+}
+
+prepare_xml_replace_target() {
+    file="$1"
+    [ -e "$file" ] || return 0
+    chmod 0664 "$file" >/dev/null 2>&1 || true
+    chcon u:object_r:shell_data_file:s0 "$file" >/dev/null 2>&1 || true
 }
 
 copy_xml_pair_to_dir() {
@@ -294,15 +311,19 @@ copy_xml_pair_to_dir() {
         return 1
     }
     mkdir -p "$dst_dir"
+    prepare_xml_replace_target "$dst_dir/game_policy.xml"
+    prepare_xml_replace_target "$dst_dir/performanceconfig.xml"
     game_tmp="$dst_dir/game_policy.xml.tmp"
     perf_tmp="$dst_dir/performanceconfig.xml.tmp"
     rm -f "$game_tmp" "$perf_tmp"
     if cp "$src_game" "$game_tmp" &&
-        cp "$src_perf" "$perf_tmp" &&
-        chmod 0664 "$game_tmp" "$perf_tmp" &&
-        mv "$game_tmp" "$dst_dir/game_policy.xml" &&
-        mv "$perf_tmp" "$dst_dir/performanceconfig.xml"; then
-        return 0
+        cp "$src_perf" "$perf_tmp"; then
+        chown root:root "$game_tmp" "$perf_tmp" >/dev/null 2>&1 || true
+        if chmod 0664 "$game_tmp" "$perf_tmp" &&
+            mv "$game_tmp" "$dst_dir/game_policy.xml" &&
+            mv "$perf_tmp" "$dst_dir/performanceconfig.xml"; then
+            return 0
+        fi
     fi
     rm -f "$game_tmp" "$perf_tmp"
     set_xml_error "$label copy failed"
@@ -799,8 +820,16 @@ apply_zuipp() {
     }
     label_active_xml
     if trigger_init_action "$PROP_ZUIPP" apply &&
-        wait_mount_state mounted "$SYSTEM_GAME_POLICY" "$SYSTEM_PERF_CONFIG" &&
-        verify_zuipp_mount_core; then
+        wait_mount_state mounted "$SYSTEM_GAME_POLICY" "$SYSTEM_PERF_CONFIG"; then
+        label_bound_system_xml
+    else
+        set_xml_error "bind mount action failed"
+        log_line "ZuiPP mount failed: prop=$(getprop "$PROP_ZUIPP" 2>/dev/null)"
+        publish_xml_state
+        set_status "daemon=running" "last=apply_zuipp_failed" "reason=mount_failed"
+        return 1
+    fi
+    if verify_zuipp_mount_core; then
         touch "$ZUI_ENABLED"
         chmod 0664 "$ZUI_ENABLED" 2>/dev/null
         clear_xml_error
@@ -814,9 +843,10 @@ apply_zuipp() {
         set_status "daemon=running" "last=apply_zuipp_ok" "reason=$reason"
         return 0
     fi
-    log_line "ZuiPP bind failed: prop=$(getprop "$PROP_ZUIPP" 2>/dev/null)"
+    set_xml_error "bind mount verification failed"
+    log_line "ZuiPP verify failed: prop=$(getprop "$PROP_ZUIPP" 2>/dev/null)"
     publish_xml_state
-    set_status "daemon=running" "last=apply_zuipp_failed" "reason=$reason"
+    set_status "daemon=running" "last=apply_zuipp_failed" "reason=verify_failed"
     return 1
 }
 
