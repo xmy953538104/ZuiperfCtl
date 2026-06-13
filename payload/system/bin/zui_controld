@@ -264,9 +264,15 @@ write_active_sha() {
 label_active_xml() {
     for file in "$ACTIVE_GAME_POLICY" "$ACTIVE_PERF_CONFIG"; do
         [ -e "$file" ] || continue
-        chcon u:object_r:system_file:s0 "$file" >/dev/null 2>&1 ||
-            restorecon "$file" >/dev/null 2>&1 || true
-        chmod 0664 "$file" 2>/dev/null
+        current_context="$(ls -Z "$file" 2>/dev/null | awk '{print $1}')"
+        if [ "$current_context" != "u:object_r:system_file:s0" ]; then
+            chcon u:object_r:system_file:s0 "$file" >/dev/null 2>&1 ||
+                restorecon "$file" >/dev/null 2>&1 || true
+        fi
+        current_mode="$(stat -c %a "$file" 2>/dev/null | head -n 1)"
+        if [ "$current_mode" != "664" ]; then
+            chmod 0664 "$file" 2>/dev/null || true
+        fi
     done
 }
 
