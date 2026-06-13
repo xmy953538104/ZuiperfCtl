@@ -396,6 +396,7 @@ def patch_plat_sepolicy(unpack, payload, dry_run, report):
     patch = payload / "patches" / "plat_sepolicy_zui_control.cil"
     target = unpack / "system_a" / "system" / "etc" / "selinux" / "plat_sepolicy.cil"
     obsolete = [
+        ";; P2 XML reload only signals ZuiPP/GameHelper after active XML is remounted.",
         "(allow shell self (capability (kill)))",
         "(allow shell system_app (process (signal sigkill)))",
         "(allow shell platform_app (process (signal sigkill)))",
