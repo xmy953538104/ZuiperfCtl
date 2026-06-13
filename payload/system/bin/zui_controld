@@ -373,7 +373,8 @@ init_active_xml() {
         "$ZUI_STATE_DIR" "$ZUI_OFFICIAL_DIR"
     if [ ! -s "$ACTIVE_GAME_POLICY" ] || [ ! -s "$ACTIVE_PERF_CONFIG" ]; then
         copy_xml_pair_to_dir "$BAKED_GAME_POLICY" "$BAKED_PERF_CONFIG" \
-            "$ZUI_ACTIVE_DIR" "active init" || return 1
+            "$ZUI_STAGING_DIR" "active init" || return 1
+        promote_staging_with_init "active_init" || return 1
         log_line "ZuiPP active XML initialized from baked baseline"
     fi
     validate_xml_pair "$ACTIVE_GAME_POLICY" "$ACTIVE_PERF_CONFIG" "active" || return 1
@@ -812,25 +813,44 @@ wait_prop_value() {
     return 1
 }
 
-prepare_active_replace() {
-    if trigger_init_action "$PROP_ZUIPP" prepare_active &&
-        wait_prop_value "$PROP_ZUIPP" prepared 10 &&
-        wait_mount_state unmounted "$SYSTEM_GAME_POLICY" "$SYSTEM_PERF_CONFIG"; then
-        mkdir -p "$ZUI_ACTIVE_DIR"
-        chmod 0775 "$ZUI_ACTIVE_DIR" 2>/dev/null || true
-        return 0
-    fi
-    set_xml_error "prepare active replace failed"
-    log_line "ZuiPP prepare active failed: prop=$(getprop "$PROP_ZUIPP" 2>/dev/null)"
-    return 1
-}
-
-replace_active_xml_from_pair() {
+stage_xml_pair_from_pair() {
     src_game="$1"
     src_perf="$2"
     label="$3"
-    prepare_active_replace || return 1
-    copy_xml_pair_to_dir "$src_game" "$src_perf" "$ZUI_ACTIVE_DIR" "$label"
+    copy_xml_pair_to_dir "$src_game" "$src_perf" "$ZUI_STAGING_DIR" "$label staging" || return 1
+    validate_xml_pair "$STAGING_GAME_POLICY" "$STAGING_PERF_CONFIG" "$label staging"
+}
+
+mark_zuipp_apply_success() {
+    reason="$1"
+    touch "$ZUI_ENABLED"
+    chmod 0664 "$ZUI_ENABLED" 2>/dev/null
+    clear_xml_error
+    write_active_sha
+    write_xml_status_file \
+        "mounted=true" \
+        "game_policy=$(file_sha "$ACTIVE_GAME_POLICY")" \
+        "performanceconfig=$(file_sha "$ACTIVE_PERF_CONFIG")" \
+        "source=active"
+    publish_xml_state
+    set_status "daemon=running" "last=apply_zuipp_ok" "reason=$reason"
+}
+
+promote_staging_with_init() {
+    reason="$1"
+    validate_xml_pair "$STAGING_GAME_POLICY" "$STAGING_PERF_CONFIG" "staging" || return 1
+    if trigger_init_action "$PROP_ZUIPP" promote_active &&
+        wait_prop_value "$PROP_ZUIPP" done 10 &&
+        wait_mount_state mounted "$SYSTEM_GAME_POLICY" "$SYSTEM_PERF_CONFIG" &&
+        verify_zuipp_mount_core &&
+        verify_system_xml_contexts; then
+        mark_zuipp_apply_success "$reason"
+        return 0
+    fi
+    set_xml_error "promote active verification failed"
+    log_line "ZuiPP promote active failed: prop=$(getprop "$PROP_ZUIPP" 2>/dev/null)"
+    publish_xml_state
+    return 1
 }
 
 validate_zuipp_files() {
@@ -847,29 +867,24 @@ rollback_active_xml() {
     reason="$1"
     log_line "rollback active XML: $reason"
     if [ -s "$LAST_GOOD_GAME_POLICY" ] && [ -s "$LAST_GOOD_PERF_CONFIG" ]; then
-        replace_active_xml_from_pair "$LAST_GOOD_GAME_POLICY" "$LAST_GOOD_PERF_CONFIG" \
+        stage_xml_pair_from_pair "$LAST_GOOD_GAME_POLICY" "$LAST_GOOD_PERF_CONFIG" \
             "rollback last_good" || return 1
-        apply_zuipp "rollback_last_good"
+        promote_staging_with_init "rollback_last_good"
         return $?
     fi
-    replace_active_xml_from_pair "$BAKED_GAME_POLICY" "$BAKED_PERF_CONFIG" \
+    stage_xml_pair_from_pair "$BAKED_GAME_POLICY" "$BAKED_PERF_CONFIG" \
         "rollback baked baseline" || return 1
-    apply_zuipp "rollback_baked"
+    promote_staging_with_init "rollback_baked"
 }
 
 promote_staging_to_active() {
     validate_xml_pair "$STAGING_GAME_POLICY" "$STAGING_PERF_CONFIG" "staging" || return 1
     backup_active_to_last_good || return 1
-    if ! replace_active_xml_from_pair "$STAGING_GAME_POLICY" "$STAGING_PERF_CONFIG" \
-        "promote staging"; then
-        rollback_active_xml "promote copy failed"
-        return 1
-    fi
-    if apply_zuipp "promote_staging"; then
+    if promote_staging_with_init "promote_staging"; then
         backup_active_to_last_good
         return 0
     fi
-    rollback_active_xml "apply active failed"
+    rollback_active_xml "promote active failed"
     return 1
 }
 
@@ -896,17 +911,7 @@ apply_zuipp() {
         return 1
     fi
     if verify_zuipp_mount_core && verify_system_xml_contexts; then
-        touch "$ZUI_ENABLED"
-        chmod 0664 "$ZUI_ENABLED" 2>/dev/null
-        clear_xml_error
-        write_active_sha
-        write_xml_status_file \
-            "mounted=true" \
-            "game_policy=$(file_sha "$ACTIVE_GAME_POLICY")" \
-            "performanceconfig=$(file_sha "$ACTIVE_PERF_CONFIG")" \
-            "source=active"
-        publish_xml_state
-        set_status "daemon=running" "last=apply_zuipp_ok" "reason=$reason"
+        mark_zuipp_apply_success "$reason"
         return 0
     fi
     set_xml_error "bind mount verification failed"
@@ -918,12 +923,12 @@ apply_zuipp() {
 
 restore_zuipp() {
     init_active_xml || return 1
-    replace_active_xml_from_pair "$BAKED_GAME_POLICY" "$BAKED_PERF_CONFIG" \
+    stage_xml_pair_from_pair "$BAKED_GAME_POLICY" "$BAKED_PERF_CONFIG" \
         "restore baked baseline" || {
         set_status "daemon=running" "last=restore_zuipp_failed" "reason=copy_failed"
         return 1
     }
-    if ! apply_zuipp "restore_baked_baseline"; then
+    if ! promote_staging_with_init "restore_baked_baseline"; then
         rollback_active_xml "restore baked baseline failed"
         set_status "daemon=running" "last=restore_zuipp_failed"
         return 1
@@ -941,9 +946,9 @@ restore_last_good_zuipp() {
         set_status "daemon=running" "last=restore_last_good_failed"
         return 1
     fi
-    replace_active_xml_from_pair "$LAST_GOOD_GAME_POLICY" "$LAST_GOOD_PERF_CONFIG" \
+    stage_xml_pair_from_pair "$LAST_GOOD_GAME_POLICY" "$LAST_GOOD_PERF_CONFIG" \
         "restore last_good" || return 1
-    apply_zuipp "restore_last_good"
+    promote_staging_with_init "restore_last_good"
 }
 
 restore_official_original_zuipp() {
@@ -955,9 +960,9 @@ restore_official_original_zuipp() {
         return 1
     fi
     backup_active_to_last_good || true
-    replace_active_xml_from_pair "$OFFICIAL_GAME_POLICY" "$OFFICIAL_PERF_CONFIG" \
+    stage_xml_pair_from_pair "$OFFICIAL_GAME_POLICY" "$OFFICIAL_PERF_CONFIG" \
         "restore official original" || return 1
-    apply_zuipp "restore_official_original"
+    promote_staging_with_init "restore_official_original"
 }
 
 restart_asoul() {
@@ -1307,12 +1312,18 @@ set_performance_profile() {
     chmod 0664 "$PERFORMANCE_PROFILES" 2>/dev/null
     clear_performance_summary
     log_line "performance profile saved: $pkg/$mode"
-    generate_performance_xml
+    if generate_performance_xml && promote_staging_to_active; then
+        publish_performance_state
+        LAST_GPU_PROFILE=
+        apply_gpu_limits_for_pkg "$(active_scene_pkg)"
+        set_status "daemon=running" "last=set_performance_profile_applied" \
+            "package=$pkg" "mode=$mode"
+        return 0
+    fi
     publish_performance_state
-    LAST_GPU_PROFILE=
-    apply_gpu_limits_for_pkg "$(active_scene_pkg)"
-    set_status "daemon=running" "last=set_performance_profile" \
-        "package=$pkg" "mode=$mode"
+    set_status "daemon=running" "last=set_performance_profile_failed" \
+        "package=$pkg" "mode=$mode" "reason=apply_failed"
+    return 1
 }
 
 remove_performance_profile() {
@@ -1325,12 +1336,18 @@ remove_performance_profile() {
     rewrite_performance_without_key "$pkg" "$mode"
     clear_performance_summary
     log_line "performance profile removed: $pkg/$mode"
-    generate_performance_xml
+    if generate_performance_xml && promote_staging_to_active; then
+        publish_performance_state
+        LAST_GPU_PROFILE=
+        apply_gpu_limits_for_pkg "$(active_scene_pkg)"
+        set_status "daemon=running" "last=remove_performance_profile_applied" \
+            "package=$pkg" "mode=$mode"
+        return 0
+    fi
     publish_performance_state
-    LAST_GPU_PROFILE=
-    apply_gpu_limits_for_pkg "$(active_scene_pkg)"
-    set_status "daemon=running" "last=remove_performance_profile" \
-        "package=$pkg" "mode=$mode"
+    set_status "daemon=running" "last=remove_performance_profile_failed" \
+        "package=$pkg" "mode=$mode" "reason=apply_failed"
+    return 1
 }
 
 app_apk_path() {

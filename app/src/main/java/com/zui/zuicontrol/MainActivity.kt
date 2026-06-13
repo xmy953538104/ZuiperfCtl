@@ -503,8 +503,8 @@ class MainActivity : Activity() {
 
             addView(sectionTitle("操作"), fieldMargins())
             addView(actionPair(
-                primaryButton("保存模式") { savePerformanceProfile() },
-                commandButton("删除模式") { removePerformanceProfile() },
+                primaryButton("保存并应用") { savePerformanceProfile() },
+                commandButton("删除并应用") { removePerformanceProfile() },
             ), buttonMargins())
             addView(actionPair(
                 primaryButton("生成并应用调度") {
@@ -619,7 +619,7 @@ class MainActivity : Activity() {
         loadSelectedProfile()
         val xmlState = setting(ZuiControlContract.KEY_XML_STATE).ifBlank { "active XML 等待挂载" }
         val summary = setting(ZuiControlContract.KEY_PERFORMANCE_SUMMARY)
-            .ifBlank { "staging XML 尚未生成；保存后点“生成并应用调度”会校验 staging 并提升为 active。" }
+            .ifBlank { "staging XML 尚未生成；保存配置后会生成 XML 并提升为 active。" }
         performanceSummary.text = "$xmlState\n$summary"
     }
 
@@ -697,7 +697,7 @@ class MainActivity : Activity() {
         )
         performanceProfiles[profile.key] = profile
         renderPerformanceProfiles()
-        sendCommand("正在保存性能配置", settleDelayMs = LONG_COMMAND_DELAY_MS) {
+        sendCommand("正在保存并应用", settleDelayMs = LONG_COMMAND_DELAY_MS) {
             ZuiControlRequest.send(
                 this,
                 ZuiControlContract.CMD_SET_PERFORMANCE_PROFILE,

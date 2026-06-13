@@ -28,7 +28,7 @@ on property:zui_control.zuipp=restore
     umount /system/etc/performanceconfig.xml
     setprop zui_control.zuipp restored
 
-on property:zui_control.zuipp=prepare_active
+on property:zui_control.zuipp=promote_active
     umount /system/etc/game_policy.xml
     umount /system/etc/performanceconfig.xml
     rm /data/vendor/zui_control/zuipp/active/game_policy.xml
@@ -36,8 +36,20 @@ on property:zui_control.zuipp=prepare_active
     rm /data/vendor/zui_control/zuipp/active/game_policy.xml.tmp
     rm /data/vendor/zui_control/zuipp/active/performanceconfig.xml.tmp
     mkdir /data/vendor/zui_control/zuipp/active 0775 root shell
+    copy /data/vendor/zui_control/zuipp/staging/game_policy.xml /data/vendor/zui_control/zuipp/active/game_policy.xml
+    copy /data/vendor/zui_control/zuipp/staging/performanceconfig.xml /data/vendor/zui_control/zuipp/active/performanceconfig.xml
+    chown root root /data/vendor/zui_control/zuipp/active/game_policy.xml
+    chown root root /data/vendor/zui_control/zuipp/active/performanceconfig.xml
+    chmod 0664 /data/vendor/zui_control/zuipp/active/game_policy.xml
+    chmod 0664 /data/vendor/zui_control/zuipp/active/performanceconfig.xml
     restorecon_recursive /data/vendor/zui_control/zuipp/active
-    setprop zui_control.zuipp prepared
+    mount none /data/vendor/zui_control/zuipp/active/game_policy.xml /system/etc/game_policy.xml bind
+    mount none /data/vendor/zui_control/zuipp/active/performanceconfig.xml /system/etc/performanceconfig.xml bind
+    restorecon /system/etc/game_policy.xml
+    restorecon /system/etc/performanceconfig.xml
+    chmod 0664 /system/etc/game_policy.xml
+    chmod 0664 /system/etc/performanceconfig.xml
+    setprop zui_control.zuipp done
 
 on property:zui_control.asoul=apply
     umount /system/etc/asopt.conf
